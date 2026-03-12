@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión Documental con OCR</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            color: #1a1a2e;
+            min-height: 100vh;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        header h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        header p {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 0.3rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid #e8e8e8;
+        }
+
+        .card h2 {
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+            color: #16213e;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Upload form */
+        .upload-area {
+            border: 2px dashed #c5cae9;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s;
+            background: #fafbff;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: #0f3460;
+            background: #f0f4ff;
+        }
+
+        .upload-area input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-area .icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-area p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .upload-area .filename {
+            margin-top: 0.5rem;
+            font-weight: 600;
+            color: #0f3460;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .form-group label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group select {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+        }
+
+        .btn {
+            padding: 0.6rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .btn-primary {
+            background: #0f3460;
+            color: white;
+        }
+
+        .btn-primary:hover { background: #16213e; }
+
+        .btn-primary:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .btn-danger:hover { background: #c0392b; }
+
+        .btn-secondary {
+            background: #ecf0f1;
+            color: #333;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .btn-secondary:hover { background: #d5dbdb; }
+
+        /* Search */
+        .search-form {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .search-form input {
+            flex: 1;
+            padding: 0.6rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .search-form input:focus {
+            outline: none;
+            border-color: #0f3460;
+            box-shadow: 0 0 0 2px rgba(15,52,96,0.15);
+        }
+
+        /* Stats */
+        .stats {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #777;
+            margin-bottom: 1rem;
+        }
+
+        .stats span {
+            background: #f0f2f5;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+
+        /* Documents table */
+        .doc-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .doc-table th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #f0f2f5;
+        }
+
+        .doc-table td {
+            padding: 0.75rem;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f5f5f5;
+            vertical-align: middle;
+        }
+
+        .doc-table tr:hover td {
+            background: #fafbff;
+        }
+
+        .doc-type {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .doc-type.pdf { background: #fde8e8; color: #c0392b; }
+        .doc-type.img { background: #e8f5e9; color: #27ae60; }
+
+        .actions {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #999;
+        }
+
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+            position: relative;
+        }
+
+        .modal h3 {
+            margin-bottom: 1rem;
+            color: #16213e;
+        }
+
+        .modal .close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .modal .close:hover { color: #333; }
+
+        .texto-extraido {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1rem;
+            white-space: pre-wrap;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            color: #0f3460;
+            font-weight: 600;
+        }
+
+        .loading.active { display: flex; }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #0f3460;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .form-row { flex-direction: column; }
+            .doc-table { font-size: 0.8rem; }
+            .actions { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sistema de Gesti&oacute;n Documental</h1>
+        <p>Procesamiento de documentos con tecnolog&iacute;a OCR (Tesseract)</p>
+    </header>
+
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="card">
+            <h2>&#128196; Cargar Documento</h2>
+            <form id="uploadForm" action="/subir" method="post" enctype="multipart/form-data">
+                <div class="upload-area" id="dropZone">
+                    <input type="file" name="archivo" id="fileInput"
+                           accept=".png,.jpg,.jpeg,.tiff,.tif,.bmp,.pdf" required>
+                    <div class="icon">&#128206;</div>
+                    <p>Haga clic o arrastre un archivo aqu&iacute;</p>
+                    <p style="font-size:0.78rem; color:#999; margin-top:0.3rem;">
+                        PNG, JPG, TIFF, BMP, PDF
+                    </p>
+                    <div class="filename" id="fileName"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="idioma">Idioma del documento</label>
+                        <select name="idioma" id="idioma">
+                            <option value="spa" selected>Espa&ntilde;ol</option>
+                            <option value="eng">Ingl&eacute;s</option>
+                            <option value="spa+eng">Espa&ntilde;ol + Ingl&eacute;s</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="btnSubir" disabled>
+                        Procesar con OCR
+                    </button>
+                </div>
+            </form>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                Procesando documento con OCR, por favor espere...
+            </div>
+        </div>
+
+        <!-- Search Section -->
+        <div class="card">
+            <h2>&#128269; Buscar Documentos</h2>
+            <form class="search-form" action="/" method="get">
+                <input type="text" name="busqueda" placeholder="Buscar por texto extra&iacute;do..."
+                       value="{{ busqueda }}">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                {% if busqueda %}
+                <a href="/" class="btn btn-secondary">Limpiar</a>
+                {% endif %}
+            </form>
+        </div>
+
+        <!-- Documents List -->
+        <div class="card">
+            <h2>&#128218; Documentos Procesados</h2>
+            <div class="stats">
+                <span>{{ total }} documento(s) encontrado(s)</span>
+                {% if busqueda %}
+                <span>B&uacute;squeda: "{{ busqueda }}"</span>
+                {% endif %}
+            </div>
+
+            {% if documentos|length > 0 %}
+            <table class="doc-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Tama&ntilde;o</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documentos %}
+                    <tr>
+                        <td>{{ doc.id }}</td>
+                        <td>{{ doc.nombre_archivo }}</td>
+                        <td>
+                            <span class="doc-type {{ 'pdf' if doc.tipo_archivo == '.pdf' else 'img' }}">
+                                {{ doc.tipo_archivo[1:] }}
+                            </span>
+                        </td>
+                        <td>{{ "%.2f"|format(doc.tamano_mb) }} MB</td>
+                        <td>{{ doc.fecha_carga.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td class="actions">
+                            <button class="btn btn-secondary"
+                                    onclick="verTexto({{ doc.id }}, '{{ doc.nombre_archivo }}')">
+                                Ver texto
+                            </button>
+                            <a href="/descargar/{{ doc.id }}" class="btn btn-secondary">
+                                Descargar
+                            </a>
+                            <button class="btn btn-danger"
+                                    onclick="eliminarDoc({{ doc.id }}, '{{ doc.nombre_archivo }}')">
+                                Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">&#128196;</div>
+                <p>No hay documentos procesados a&uacute;n.</p>
+                <p style="font-size:0.85rem; margin-top:0.5rem;">Cargue un documento para comenzar.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Text Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <button class="close" onclick="cerrarModal()">&times;</button>
+            <h3 id="modalTitle">Texto Extra&iacute;do</h3>
+            <div class="texto-extraido" id="modalTexto">Cargando...</div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const btnSubir = document.getElementById('btnSubir');
+        const uploadForm = document.getElementById('uploadForm');
+        const loading = document.getElementById('loading');
+        const dropZone = document.getElementById('dropZone');
+
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                fileName.textContent = this.files[0].name;
+                btnSubir.disabled = false;
+            } else {
+                fileName.textContent = '';
+                btnSubir.disabled = true;
+            }
+        });
+
+        uploadForm.addEventListener('submit', function() {
+            btnSubir.disabled = true;
+            loading.classList.add('active');
+        });
+
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', function() {
+            this.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileName.textContent = e.dataTransfer.files[0].name;
+                btnSubir.disabled = false;
+            }
+        });
+
+        async function verTexto(docId, nombre) {
+            document.getElementById('modalTitle').textContent = 'Texto: ' + nombre;
+            document.getElementById('modalTexto').textContent = 'Cargando...';
+            document.getElementById('modalOverlay').classList.add('active');
+
+            try {
+                const resp = await fetch('/api/documentos');
+                const docs = await resp.json();
+                const doc = docs.find(d => d.id === docId);
+                if (doc) {
+                    document.getElementById('modalTexto').textContent =
+                        doc.texto_extraido || '(No se extrajo texto de este documento)';
+                }
+            } catch (err) {
+                document.getElementById('modalTexto').textContent = 'Error al cargar el texto.';
+            }
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        document.getElementById('modalOverlay').addEventListener('click', function(e) {
+            if (e.target === this) cerrarModal();
+        });
+
+        async function eliminarDoc(docId, nombre) {
+            if (!confirm('¿Está seguro de eliminar "' + nombre + '"?')) return;
+            try {
+                const resp = await fetch('/eliminar/' + docId, { method: 'DELETE' });
+                if (resp.ok) {
+                    location.reload();
+                } else {
+                    alert('Error al eliminar el documento.');
+                }
+            } catch (err) {
+                alert('Error de conexión.');
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') cerrarModal();
+        });
+    </script>
+</body>
+</html>
