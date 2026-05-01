@@ -1,5 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
-from sqlalchemy.orm import declarative_base, sessionmaker
+import json as _json
+
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, text
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
 DATABASE_URL = "sqlite:///./gestion_documental.db"
@@ -20,8 +22,19 @@ class Documento(Base):
     texto_extraido = Column(Text, default="")
     fecha_carga = Column(DateTime, default=datetime.now)
     idioma_ocr = Column(String(10), default="spa")
+    # OCR por zonas — nulos si se procesó con OCR completo
+    plantilla_ocr_id = Column(Integer, ForeignKey("plantillas_ocr.id"), nullable=True)
+    zona_resultados_json = Column(Text, nullable=True)
+
+    plantilla_ocr = relationship("PlantillaOCR", foreign_keys=[plantilla_ocr_id])
 
     def to_dict(self):
+        zonas = None
+        if self.zona_resultados_json:
+            try:
+                zonas = _json.loads(self.zona_resultados_json)
+            except Exception:
+                zonas = None
         return {
             "id": self.id,
             "nombre_archivo": self.nombre_archivo,
@@ -30,11 +43,101 @@ class Documento(Base):
             "texto_extraido": self.texto_extraido,
             "fecha_carga": self.fecha_carga.strftime("%d/%m/%Y %H:%M:%S"),
             "idioma_ocr": self.idioma_ocr,
+            "plantilla_ocr_id": self.plantilla_ocr_id,
+            "plantilla_nombre": self.plantilla_ocr.nombre if self.plantilla_ocr else None,
+            "zona_resultados": zonas,
         }
+
+
+class PlantillaOCR(Base):
+    """
+    Template de OCR por zonas. Almacena una imagen de referencia y sus
+    dimensiones originales para escalar correctamente las zonas al procesar
+    documentos del mismo tipo.
+    """
+    __tablename__ = "plantillas_ocr"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(255), nullable=False)
+    descripcion = Column(Text, default="")
+    ruta_imagen_ref = Column(String(500), nullable=False)
+    img_ancho = Column(Integer, nullable=False)   # dimensiones originales del
+    img_alto = Column(Integer, nullable=False)    # archivo de referencia
+    fecha_creacion = Column(DateTime, default=datetime.now)
+
+    zonas = relationship(
+        "ZonaOCR",
+        back_populates="plantilla",
+        cascade="all, delete-orphan",
+        order_by="ZonaOCR.orden",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nombre": self.nombre,
+            "descripcion": self.descripcion,
+            "ruta_imagen_ref": self.ruta_imagen_ref,
+            "img_ancho": self.img_ancho,
+            "img_alto": self.img_alto,
+            "fecha_creacion": self.fecha_creacion.strftime("%d/%m/%Y %H:%M"),
+            "zonas": [z.to_dict() for z in self.zonas],
+        }
+
+
+class ZonaOCR(Base):
+    """
+    Zona de extracción de texto dentro de una plantilla.
+    Coordenadas en píxeles de la imagen original de referencia.
+    """
+    __tablename__ = "zonas_ocr"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plantilla_id = Column(Integer, ForeignKey("plantillas_ocr.id"), nullable=False)
+    nombre_campo = Column(String(255), nullable=False)
+    x = Column(Integer, nullable=False)
+    y = Column(Integer, nullable=False)
+    ancho = Column(Integer, nullable=False)
+    alto = Column(Integer, nullable=False)
+    orden = Column(Integer, default=0)
+
+    plantilla = relationship("PlantillaOCR", back_populates="zonas")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "plantilla_id": self.plantilla_id,
+            "nombre_campo": self.nombre_campo,
+            "x": self.x,
+            "y": self.y,
+            "ancho": self.ancho,
+            "alto": self.alto,
+            "orden": self.orden,
+        }
+
+
+def _migrate():
+    """
+    Aplica migraciones incrementales sobre tablas ya existentes.
+    SQLite soporta ALTER TABLE ... ADD COLUMN; si la columna ya existe
+    SQLite lanza un error que ignoramos silenciosamente.
+    """
+    migraciones = [
+        "ALTER TABLE documentos ADD COLUMN plantilla_ocr_id INTEGER REFERENCES plantillas_ocr(id)",
+        "ALTER TABLE documentos ADD COLUMN zona_resultados_json TEXT",
+    ]
+    with engine.connect() as conn:
+        for sql in migraciones:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # La columna ya existe — no hay nada que hacer
 
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate()
 
 
 def get_db():

@@ -757,6 +757,203 @@
         }
 
         /* ══════════════════════════════
+           ZONE EDITOR
+        ══════════════════════════════ */
+        .zone-modal { max-width: 96vw; width: 1150px; max-height: 93vh; padding: 1.5rem; }
+
+        .ze-layout {
+            display: flex;
+            gap: 1.25rem;
+            height: 68vh;
+            margin-top: 1rem;
+        }
+
+        .ze-canvas-area {
+            flex: 1;
+            overflow: auto;
+            background: #e2e8f0;
+            border-radius: 10px;
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            cursor: crosshair;
+        }
+
+        .ze-ref-img {
+            display: block;
+            max-width: 100%;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        #zeCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            cursor: crosshair;
+        }
+
+        .ze-sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .ze-instructions {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            font-size: 0.8rem;
+            color: #0369a1;
+            line-height: 1.5;
+        }
+
+        .ze-instructions strong { display: block; margin-bottom: 0.3rem; font-size: 0.78rem; }
+
+        .ze-zone-list {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .ze-zone-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.65rem 0.85rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.84rem;
+        }
+
+        .ze-zone-item:last-child { border-bottom: none; }
+
+        .ze-zone-num {
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .ze-zone-name {
+            flex: 1;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .ze-zone-del {
+            background: none; border: none;
+            cursor: pointer; color: #cbd5e1;
+            font-size: 1rem; padding: 0.1rem;
+            transition: color 0.15s;
+        }
+
+        .ze-zone-del:hover { color: var(--danger); }
+
+        .ze-empty {
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+        }
+
+        .ze-name-popup {
+            display: none;
+            position: absolute;
+            background: white;
+            border: 1.5px solid var(--accent);
+            border-radius: 10px;
+            padding: 0.75rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            z-index: 20;
+            min-width: 200px;
+        }
+
+        .ze-name-popup label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 0.35rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
+
+        .ze-name-popup input {
+            width: 100%;
+            padding: 0.5rem 0.65rem;
+            border: 1.5px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.87rem;
+            font-family: 'Inter', sans-serif;
+            margin-bottom: 0.5rem;
+        }
+
+        .ze-name-popup input:focus { outline: none; border-color: var(--accent); }
+        .ze-popup-btns { display: flex; gap: 0.4rem; }
+
+        /* Plantilla cards */
+        .plantillas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .plantilla-card {
+            background: white;
+            border: 1.5px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.15s;
+        }
+
+        .plantilla-card:hover { border-color: #c7d2fe; box-shadow: 0 4px 16px rgba(99,102,241,0.09); }
+
+        .pc-thumb {
+            height: 140px;
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .pc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+        .pc-thumb-empty { color: #cbd5e1; font-size: 2.5rem; }
+
+        .pc-zone-count {
+            position: absolute;
+            bottom: 0.5rem; right: 0.5rem;
+            background: rgba(15,23,42,0.7);
+            color: white;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+        }
+
+        .pc-body { padding: 1rem 1.1rem; }
+        .pc-name { font-size: 0.95rem; font-weight: 700; color: var(--text); margin-bottom: 0.25rem; }
+        .pc-desc { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem; min-height: 1.2em; }
+        .pc-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+        /* Result table */
+        .result-field { padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+        .result-field:last-child { border-bottom: none; }
+        .result-field-name { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 0.3rem; }
+        .result-field-val { font-size: 0.9rem; color: var(--text); font-family: 'Consolas', monospace; background: #f8fafc; padding: 0.4rem 0.6rem; border-radius: 6px; white-space: pre-wrap; }
+
+        /* ══════════════════════════════
            FILTERS ROW
         ══════════════════════════════ */
         .filters-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
@@ -822,6 +1019,11 @@
             </button>
             <button class="nav-item" data-sec="reports" onclick="navigate('reports')">
                 <i class="bi bi-bar-chart-line"></i> Reportes
+            </button>
+
+            <button class="nav-item" data-sec="plantillas" onclick="navigate('plantillas')">
+                <i class="bi bi-layout-text-window-reverse"></i> Plantillas OCR
+                <span class="nav-badge" id="sidebarPlantillas">0</span>
             </button>
 
             <div class="nav-section-label">Sistema</div>
@@ -893,9 +1095,12 @@
                         <span class="metric-aux">PNG · JPG · TIFF · BMP</span>
                     </div>
                     <div class="metric metric-o">
-                        <span class="metric-num">{{ "%.1f"|format(stats.almacenamiento_mb) }}<small style="font-size:1.2rem;letter-spacing:0;font-weight:600;"> MB</small></span>
+                        <span class="metric-num" id="storageMetricNum">{{ "%.1f"|format(stats.almacenamiento_mb) }}<small style="font-size:1.2rem;letter-spacing:0;font-weight:600;"> MB</small></span>
                         <span class="metric-lbl">Almacenamiento</span>
-                        <span class="metric-aux">en disco</span>
+                        <span class="metric-aux" id="storageMetricAux">en disco</span>
+                        <div style="margin-top:0.55rem; height:3px; background:var(--border); border-radius:2px; overflow:hidden;">
+                            <div id="storageMetricBar" style="height:100%; border-radius:2px; width:0%; transition:width 0.5s ease;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -922,7 +1127,7 @@
                     </div>
                 </div>
 
-                <!-- Documentos recientes -->
+                <!-- Documentos recientes (renderizado por JS para actualizarse sin recargar) -->
                 <div class="card">
                     <div class="card-header">
                         <div class="card-title"><i class="bi bi-clock-history"></i> Documentos recientes</div>
@@ -930,59 +1135,7 @@
                             Ver todos <i class="bi bi-arrow-right"></i>
                         </button>
                     </div>
-
-                    {% if documentos|length > 0 %}
-                    <table class="tbl">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Tipo</th>
-                                <th>Tamaño</th>
-                                <th>Fecha de carga</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for doc in documentos[:5] %}
-                            <tr>
-                                <td style="font-weight:500; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                                    {{ doc.nombre_archivo }}
-                                </td>
-                                <td>
-                                    <span class="badge {{ 'badge-pdf' if doc.tipo_archivo == '.pdf' else 'badge-img' }}">
-                                        {{ doc.tipo_archivo[1:] }}
-                                    </span>
-                                </td>
-                                <td style="color:var(--text-muted);">{{ "%.2f"|format(doc.tamano_mb) }} MB</td>
-                                <td style="color:var(--text-muted); white-space:nowrap;">
-                                    {{ doc.fecha_carga.strftime('%d/%m/%Y %H:%M') }}
-                                </td>
-                                <td>
-                                    <div class="action-group">
-                                        <button class="btn btn-secondary btn-sm"
-                                                onclick="openOcrModal({{ doc.id }}, '{{ doc.nombre_archivo }}')">
-                                            <i class="bi bi-eye"></i> OCR
-                                        </button>
-                                        <a href="/archivo/{{ doc.id }}" class="btn btn-success btn-sm">
-                                            <i class="bi bi-download"></i>
-                                        </a>
-                                        <button class="btn btn-danger btn-sm"
-                                                onclick="deleteDoc({{ doc.id }}, '{{ doc.nombre_archivo }}')">
-                                            <i class="bi bi-trash3"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                    {% else %}
-                    <div class="empty">
-                        <i class="bi bi-file-earmark-x"></i>
-                        <p class="empty-title">No hay documentos aún</p>
-                        <p>Carga tu primer documento para comenzar.</p>
-                    </div>
-                    {% endif %}
+                    <div id="homeRecentContainer"></div>
                 </div>
 
             </div><!-- /section-home -->
@@ -1002,7 +1155,7 @@
                                    accept=".png,.jpg,.jpeg,.tiff,.tif,.bmp,.pdf" required>
                             <i class="bi bi-cloud-arrow-up uz-icon"></i>
                             <div class="uz-main">Arrastra un archivo o haz clic para seleccionar</div>
-                            <div class="uz-hint">PNG, JPG, JPEG, TIFF, BMP, PDF · máx. recomendado 20 MB</div>
+                            <div class="uz-hint" id="uzHint">PNG, JPG, JPEG, TIFF, BMP, PDF · máx. recomendado 20 MB</div>
                             <div class="uz-file" id="uzFileName"></div>
                         </div>
 
@@ -1017,16 +1170,77 @@
                             </div>
                             <div style="padding-bottom:0.05rem;">
                                 <button type="submit" class="btn btn-primary btn-lg" id="btnSubir" disabled>
-                                    <i class="bi bi-cpu"></i> Procesar con OCR
+                                    <i class="bi bi-cpu"></i> <span id="btnSubirLabel">Procesar con OCR</span>
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- ── Selector de plantilla OCR ── -->
+                        <div style="margin-top:1.1rem; padding-top:1.1rem; border-top:1px solid var(--border);">
+                            <label style="display:flex; align-items:center; gap:0.6rem; cursor:pointer; user-select:none;">
+                                <input type="checkbox" id="chkTemplate" onchange="onToggleTemplate()"
+                                       style="width:15px; height:15px; accent-color:var(--accent);">
+                                <span style="font-size:0.87rem; font-weight:600; color:var(--text);">
+                                    Usar plantilla de OCR por zonas
+                                </span>
+                            </label>
+
+                            <div id="templateSelectorWrap" style="display:none; margin-top:0.85rem;">
+                                <select class="form-control" id="templateSelect" onchange="onTemplateChange()">
+                                    <option value="">— Selecciona una plantilla —</option>
+                                </select>
+                                <div id="templateInfo" style="display:none; margin-top:0.6rem; padding:0.65rem 0.85rem;
+                                     background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;
+                                     font-size:0.8rem; color:#166534; line-height:1.5;">
+                                </div>
+                                <div id="pdfPageWrap" style="display:none; margin-top:0.75rem;">
+                                    <label style="font-size:0.82rem; font-weight:600; color:#374151; margin-bottom:0.3rem; display:block;">
+                                        Página del PDF a procesar
+                                    </label>
+                                    <input type="number" class="form-control" id="pdfPageInput"
+                                           value="1" min="1" step="1"
+                                           style="width:100px;"
+                                           title="Número de página (1 = primera)">
+                                </div>
+                                <p style="font-size:0.78rem; color:var(--text-muted); margin-top:0.5rem;">
+                                    <i class="bi bi-info-circle"></i>
+                                    Soporta imágenes y PDF. El documento y los campos extraídos se guardarán en el explorador.
+                                </p>
                             </div>
                         </div>
 
                         <div class="loading-row" id="uploadLoading">
                             <div class="spinner"></div>
-                            Procesando documento con OCR, por favor espere…
+                            <span id="uploadLoadingLabel">Procesando documento con OCR, por favor espere…</span>
                         </div>
                     </form>
+
+                    <!-- Previsualización de campos (antes de confirmar) -->
+                    <div id="zonePreviewWrap" style="display:none; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border);">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.85rem; flex-wrap:wrap; gap:0.5rem;">
+                            <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em;">
+                                <i class="bi bi-eye" style="color:var(--accent);"></i>
+                                Previsualización — <span id="zonePreviewTitle"></span>
+                            </div>
+                            <div style="display:flex; gap:0.5rem;">
+                                <button class="btn btn-secondary btn-sm" onclick="cancelarPreview()">
+                                    <i class="bi bi-x-lg"></i> Descartar
+                                </button>
+                                <button class="btn btn-primary" id="btnConfirmar" onclick="confirmarGuardado()">
+                                    <i class="bi bi-floppy"></i> Confirmar y guardar
+                                </button>
+                            </div>
+                        </div>
+                        <div id="zonePreviewBody"></div>
+                        <div class="loading-row" id="confirmLoading">
+                            <div class="spinner"></div> Guardando documento…
+                        </div>
+                    </div>
+
+                    <!-- Confirmación de guardado exitoso -->
+                    <div id="zoneResultsInline" style="display:none; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border);">
+                        <div id="zoneResultsBody"></div>
+                    </div>
                 </div>
 
                 <div class="card" style="max-width:680px;">
@@ -1035,7 +1249,8 @@
                         Al cargar un documento, PaperVault utiliza el motor <strong>Tesseract OCR</strong> para
                         extraer automáticamente el texto contenido en él. Este texto se almacena en la base de datos
                         y permite buscar el documento por su contenido. El archivo original también se conserva para
-                        descarga y visualización.
+                        descarga y visualización. Activando <strong>OCR por zonas</strong> puedes usar una plantilla
+                        para extraer solo los campos específicos de un documento estructurado.
                     </p>
                 </div>
             </div><!-- /section-upload -->
@@ -1180,18 +1395,75 @@
                  SECCIÓN: CONFIGURACIÓN
             ══════════════════════════ -->
             <div id="section-settings" class="section">
-                <div class="card" style="max-width:600px;">
-                    <div class="card-title"><i class="bi bi-gear"></i> Configuración del sistema</div>
-                    <p style="font-size:0.87rem; color:var(--text-muted); margin-bottom:1.5rem; line-height:1.6;">
-                        Módulo de configuración — disponible en versiones futuras.
+
+                <!-- Almacenamiento -->
+                <div class="card" style="max-width:520px; margin-bottom:1.25rem;">
+                    <div class="card-title" style="display:flex; align-items:center; gap:0.6rem;">
+                        <i class="bi bi-hdd" style="font-size:1.05rem;"></i> Límite de almacenamiento
+                    </div>
+                    <p style="font-size:0.83rem; color:var(--text-muted); margin-bottom:1.25rem; line-height:1.6;">
+                        Establece un límite de referencia para visualizar el uso en el dashboard principal.
+                        Este valor es <em>solo ilustrativo</em> — no impone ningún límite real ni genera alertas.
                     </p>
-                    <div style="padding:2rem; background:var(--bg); border-radius:10px; text-align:center; color:var(--text-muted);">
-                        <i class="bi bi-tools" style="font-size:2.5rem; display:block; margin-bottom:0.75rem; color:#cbd5e1;"></i>
-                        <strong style="font-size:0.9rem;">Próximamente</strong><br>
-                        <span style="font-size:0.82rem;">Gestión de usuarios, idiomas OCR por defecto y configuración de almacenamiento.</span>
+
+                    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <input type="number" id="storageLimitInput" min="0.1" step="0.1"
+                               placeholder="p. ej. 5"
+                               style="width:110px; padding:0.55rem 0.75rem; border:1px solid var(--border);
+                                      border-radius:7px; background:var(--bg); color:var(--text);
+                                      font-size:0.9rem;">
+                        <span style="font-size:0.9rem; color:var(--text-muted); font-weight:600;">GB</span>
+                        <button class="btn btn-primary btn-sm" onclick="saveStorageLimit()" style="padding:0.5rem 1.1rem;">
+                            Guardar
+                        </button>
+                    </div>
+
+                    <div id="storageLimitFeedback" style="display:none; margin-top:0.85rem; font-size:0.81rem;
+                         color:#166534; background:#f0fdf4; border:1px solid #bbf7d0;
+                         border-radius:7px; padding:0.5rem 0.85rem; align-items:center; gap:0.4rem;">
+                        <i class="bi bi-check-circle-fill"></i> Límite guardado correctamente.
                     </div>
                 </div>
+
+                <!-- Próximamente -->
+                <div class="card" style="max-width:520px;">
+                    <div class="card-title"><i class="bi bi-tools"></i> Más opciones</div>
+                    <div style="padding:1.5rem; background:var(--bg); border-radius:10px;
+                                text-align:center; color:var(--text-muted); font-size:0.83rem;">
+                        Gestión de usuarios e idiomas OCR por defecto — disponibles en versiones futuras.
+                    </div>
+                </div>
+
             </div><!-- /section-settings -->
+
+            <!-- ══════════════════════════
+                 SECCIÓN: PLANTILLAS OCR
+            ══════════════════════════ -->
+            <div id="section-plantillas" class="section">
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><i class="bi bi-layout-text-window-reverse"></i> Plantillas de OCR por zonas</div>
+                        <button class="btn btn-primary" onclick="openNewPlantillaModal()">
+                            <i class="bi bi-plus-lg"></i> Nueva plantilla
+                        </button>
+                    </div>
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1.5rem; line-height:1.6;">
+                        Una plantilla define qué zonas del documento contienen información relevante.
+                        Carga una imagen de referencia, dibuja las zonas y nómbralas. Luego podrás
+                        procesar documentos del mismo tipo extrayendo solo esos campos.
+                    </p>
+
+                    <div class="plantillas-grid" id="plantillasGrid">
+                        <div class="empty" style="grid-column:1/-1;">
+                            <i class="bi bi-layout-text-window-reverse"></i>
+                            <p class="empty-title">Sin plantillas aún</p>
+                            <p>Crea tu primera plantilla para usar OCR por zonas.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /section-plantillas -->
 
         </main>
     </div><!-- /main-wrap -->
@@ -1210,6 +1482,164 @@
             <button class="modal-x" onclick="closeModal('ocrModal')">&times;</button>
         </div>
         <div class="ocr-text" id="ocrModalBody">Cargando…</div>
+    </div>
+</div>
+
+<!-- ════ MODAL: Nueva Plantilla ════ -->
+<div class="modal-overlay" id="newPlantillaModal">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-hdr">
+            <div>
+                <div class="modal-ttl">Nueva plantilla OCR</div>
+                <div class="modal-sub">Define el nombre y sube la imagen de referencia</div>
+            </div>
+            <button class="modal-x" onclick="closeModal('newPlantillaModal')">&times;</button>
+        </div>
+
+        <form id="newPlantillaForm">
+            <div class="form-group">
+                <label>Nombre de la plantilla</label>
+                <input type="text" class="form-control" id="npNombre" placeholder="Ej: Factura proveedora, Recibo de pago…" required>
+            </div>
+            <div class="form-group">
+                <label>Descripción (opcional)</label>
+                <input type="text" class="form-control" id="npDesc" placeholder="Breve descripción del tipo de documento">
+            </div>
+            <div class="form-group">
+                <label>Imagen de referencia</label>
+                <div class="upload-zone" id="npDropZone" style="padding:1.5rem;">
+                    <input type="file" id="npFileInput" accept=".png,.jpg,.jpeg,.tiff,.tif,.bmp">
+                    <i class="bi bi-image uz-icon" style="font-size:2rem;"></i>
+                    <div class="uz-main" style="font-size:0.9rem;">Selecciona o arrastra una imagen</div>
+                    <div class="uz-hint">PNG, JPG, TIFF, BMP</div>
+                    <div class="uz-file" id="npFileName"></div>
+                </div>
+            </div>
+            <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('newPlantillaModal')">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="npSubmitBtn" disabled>
+                    <i class="bi bi-check2"></i> Crear plantilla
+                </button>
+            </div>
+            <div class="loading-row" id="npLoading">
+                <div class="spinner"></div> Guardando plantilla…
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ════ MODAL: Editor de zonas ════ -->
+<div class="modal-overlay" id="zoneEditorModal">
+    <div class="modal zone-modal">
+        <div class="modal-hdr">
+            <div>
+                <div class="modal-ttl">Editor de zonas — <span id="zeTitle"></span></div>
+                <div class="modal-sub">Arrastra sobre la imagen para marcar cada campo a extraer</div>
+            </div>
+            <button class="modal-x" onclick="closeModal('zoneEditorModal')">&times;</button>
+        </div>
+
+        <div class="ze-layout">
+            <!-- Canvas área -->
+            <div class="ze-canvas-area" id="zeCanvasArea">
+                <img id="zeRefImg" src="" alt="Referencia" class="ze-ref-img">
+                <canvas id="zeCanvas"></canvas>
+                <!-- Popup de nombre -->
+                <div class="ze-name-popup" id="zeNamePopup">
+                    <label>Nombre del campo</label>
+                    <input type="text" id="zeNameInput" placeholder="Ej: NIT, Total, Fecha…">
+                    <div class="ze-popup-btns">
+                        <button class="btn btn-primary btn-sm" onclick="confirmZone()">
+                            <i class="bi bi-check2"></i> Confirmar
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="cancelZone()">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar de zonas -->
+            <div class="ze-sidebar">
+                <div class="ze-instructions">
+                    <strong>¿Cómo usar?</strong>
+                    1. Haz clic y arrastra sobre la imagen para marcar una zona.<br>
+                    2. Escribe el nombre del campo (NIT, Total, Fecha…).<br>
+                    3. Repite para cada zona de interés.<br>
+                    4. Guarda cuando termines.
+                </div>
+
+                <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em;">
+                    Zonas definidas
+                </div>
+
+                <div class="ze-zone-list" id="zeZoneList">
+                    <div class="ze-empty">Ninguna zona definida aún</div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                    <button class="btn btn-secondary btn-sm" onclick="clearAllZones()">
+                        <i class="bi bi-trash3"></i> Limpiar todo
+                    </button>
+                    <button class="btn btn-primary" onclick="saveZones()" id="zeSaveBtn" disabled>
+                        <i class="bi bi-floppy"></i> Guardar zonas
+                    </button>
+                    <div class="loading-row" id="zeLoading">
+                        <div class="spinner"></div> Guardando…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ MODAL: Procesar con plantilla ════ -->
+<div class="modal-overlay" id="processModal">
+    <div class="modal" style="max-width:520px;">
+        <div class="modal-hdr">
+            <div>
+                <div class="modal-ttl">Procesar con plantilla — <span id="pmTitle"></span></div>
+                <div class="modal-sub">Sube el documento y se extraerán los campos definidos en la plantilla</div>
+            </div>
+            <button class="modal-x" onclick="closeModal('processModal')">&times;</button>
+        </div>
+
+        <form id="processForm">
+            <div class="form-group">
+                <label>Documento a procesar</label>
+                <div class="upload-zone" id="pmDropZone" style="padding:1.5rem;">
+                    <input type="file" id="pmFileInput" accept=".png,.jpg,.jpeg,.tiff,.tif,.bmp">
+                    <i class="bi bi-file-earmark-image uz-icon" style="font-size:2rem;"></i>
+                    <div class="uz-main" style="font-size:0.9rem;">Selecciona la imagen a procesar</div>
+                    <div class="uz-hint">Solo imágenes (PNG, JPG, TIFF, BMP)</div>
+                    <div class="uz-file" id="pmFileName"></div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Idioma</label>
+                    <select class="form-control" id="pmIdioma">
+                        <option value="spa" selected>Español</option>
+                        <option value="eng">Inglés</option>
+                        <option value="spa+eng">Español + Inglés</option>
+                    </select>
+                </div>
+                <div style="padding-bottom:0.05rem;">
+                    <button type="submit" class="btn btn-primary" id="pmSubmitBtn" disabled>
+                        <i class="bi bi-cpu"></i> Procesar
+                    </button>
+                </div>
+            </div>
+            <div class="loading-row" id="pmLoading">
+                <div class="spinner"></div> Procesando zonas con OCR…
+            </div>
+        </form>
+
+        <!-- Resultados -->
+        <div id="pmResults" style="display:none; margin-top:1.25rem;">
+            <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.75rem;">
+                Campos extraídos
+            </div>
+            <div id="pmResultsBody"></div>
+        </div>
     </div>
 </div>
 
@@ -1250,6 +1680,120 @@
         window.location.hash = sec;
     }
 
+    /* ═══════════════════════════════════════
+       HOME — TABLA DE RECIENTES (JS dinámico)
+    ═══════════════════════════════════════ */
+    function renderHomeDocs() {
+        const container = document.getElementById('homeRecentContainer');
+        if (!container) return;
+        const recent = ALL_DOCS.slice(0, 5);
+
+        if (recent.length === 0) {
+            container.innerHTML = `
+                <div class="empty">
+                    <i class="bi bi-file-earmark-x"></i>
+                    <p class="empty-title">No hay documentos aún</p>
+                    <p>Carga tu primer documento para comenzar.</p>
+                </div>`;
+            return;
+        }
+
+        const rows = recent.map(d => {
+            const badgeCls = d.tipo_archivo === '.pdf' ? 'badge-pdf' : 'badge-img';
+            const ext = (d.tipo_archivo || '.?').slice(1);
+            const viewBtn = d.zona_resultados
+                ? `<button class="btn btn-secondary btn-sm" onclick="openZonaResultsModal(${d.id})">
+                       <i class="bi bi-layout-text-window-reverse"></i> Campos
+                   </button>`
+                : `<button class="btn btn-secondary btn-sm" onclick="openOcrModal(${d.id}, '${escAttr(d.nombre_archivo)}')">
+                       <i class="bi bi-eye"></i> OCR
+                   </button>`;
+            return `<tr>
+                <td style="font-weight:500; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    ${escHtml(d.nombre_archivo)}${d.plantilla_nombre ? zonaBadge(d) : ''}
+                </td>
+                <td><span class="badge ${badgeCls}">${ext}</span></td>
+                <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
+                <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
+                <td>
+                    <div class="action-group">
+                        ${viewBtn}
+                        <a href="/archivo/${d.id}" class="btn btn-success btn-sm"><i class="bi bi-download"></i></a>
+                        <button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>Nombre</th><th>Tipo</th><th>Tamaño</th>
+                        <th>Fecha de carga</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    renderHomeDocs();  // render inicial al cargar la página
+
+    /* ═══════════════════════════════════════
+       LÍMITE DE ALMACENAMIENTO (Settings)
+    ═══════════════════════════════════════ */
+    function loadStorageLimit() {
+        return parseFloat(localStorage.getItem('pv_storage_limit_gb') || '5');
+    }
+
+    function getUsedMb() {
+        return ALL_DOCS.reduce(function(sum, d) { return sum + (parseFloat(d.tamano_mb) || 0); }, 0);
+    }
+
+    function updateStorageDisplay() {
+        const limitGb  = loadStorageLimit();
+        const usedMb   = getUsedMb();
+        const usedGb   = usedMb / 1024;
+        const pct      = Math.min(100, (usedGb / limitGb) * 100);
+
+        const numEl  = document.getElementById('storageMetricNum');
+        const auxEl  = document.getElementById('storageMetricAux');
+        const barEl  = document.getElementById('storageMetricBar');
+
+        if (numEl) {
+            numEl.innerHTML = usedGb >= 1
+                ? usedGb.toFixed(2) + '<small style="font-size:1.2rem;letter-spacing:0;font-weight:600;"> GB</small>'
+                : usedMb.toFixed(1) + '<small style="font-size:1.2rem;letter-spacing:0;font-weight:600;"> MB</small>';
+        }
+        if (auxEl) auxEl.textContent = `de ${limitGb} GB · ${pct.toFixed(1)}% usado`;
+        if (barEl) {
+            barEl.style.width = pct + '%';
+            barEl.style.background = pct > 90 ? '#ef4444' : pct > 70 ? '#f97316' : '#22c55e';
+        }
+
+        // Prellenar el input en la sección de configuración
+        const inp = document.getElementById('storageLimitInput');
+        if (inp && !inp.value) inp.value = limitGb;
+    }
+
+    function saveStorageLimit() {
+        const inp = document.getElementById('storageLimitInput');
+        const val = parseFloat(inp.value);
+        if (!val || val <= 0) { alert('Ingresa un valor mayor que 0.'); return; }
+        localStorage.setItem('pv_storage_limit_gb', val.toString());
+        updateStorageDisplay();
+
+        const fb = document.getElementById('storageLimitFeedback');
+        if (fb) {
+            fb.style.display = 'flex';
+            setTimeout(function() { fb.style.display = 'none'; }, 3000);
+        }
+    }
+
+    updateStorageDisplay();  // mostrar al cargar
+
     /* Restaurar sección desde hash */
     (function () {
         const hash = window.location.hash.replace('#', '');
@@ -1259,23 +1803,21 @@
     /* ═══════════════════════════════════════
        UPLOAD FORM
     ═══════════════════════════════════════ */
-    const fileInput  = document.getElementById('fileInput');
-    const uzFileName = document.getElementById('uzFileName');
-    const btnSubir   = document.getElementById('btnSubir');
-    const uploadForm = document.getElementById('uploadForm');
-    const dropZone   = document.getElementById('dropZone');
+    const fileInput     = document.getElementById('fileInput');
+    const uzFileName    = document.getElementById('uzFileName');
+    const btnSubir      = document.getElementById('btnSubir');
+    const uploadForm    = document.getElementById('uploadForm');
+    const dropZone      = document.getElementById('dropZone');
     const uploadLoading = document.getElementById('uploadLoading');
 
-    fileInput.addEventListener('change', function () {
-        if (this.files.length > 0) {
-            uzFileName.textContent = '📎 ' + this.files[0].name;
-            btnSubir.disabled = false;
-        }
-    });
+    function setFileSelected(file) {
+        uzFileName.textContent = '📎 ' + file.name;
+        btnSubir.disabled = false;
+        document.getElementById('zoneResultsInline').style.display = 'none';
+    }
 
-    uploadForm.addEventListener('submit', function () {
-        btnSubir.disabled = true;
-        uploadLoading.classList.add('active');
+    fileInput.addEventListener('change', function () {
+        if (this.files.length > 0) setFileSelected(this.files[0]);
     });
 
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -1285,10 +1827,203 @@
         dropZone.classList.remove('drag-over');
         if (e.dataTransfer.files.length > 0) {
             fileInput.files = e.dataTransfer.files;
-            uzFileName.textContent = '📎 ' + e.dataTransfer.files[0].name;
-            btnSubir.disabled = false;
+            setFileSelected(e.dataTransfer.files[0]);
         }
     });
+
+    /* ── Toggle plantilla OCR ── */
+    function onToggleTemplate() {
+        const checked = document.getElementById('chkTemplate').checked;
+        document.getElementById('templateSelectorWrap').style.display = checked ? 'block' : 'none';
+
+        if (checked) {
+            const sel = document.getElementById('templateSelect');
+            sel.innerHTML = '<option value="">— Selecciona una plantilla —</option>';
+            ALL_PLANTILLAS.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.nombre + (p.zonas.length ? ` (${p.zonas.length} zona${p.zonas.length !== 1 ? 's' : ''})` : ' — sin zonas');
+                opt.disabled = p.zonas.length === 0;
+                sel.appendChild(opt);
+            });
+            document.getElementById('uzHint').textContent = 'PNG, JPG, JPEG, TIFF, BMP, PDF · máx. recomendado 20 MB';
+            document.getElementById('btnSubirLabel').textContent = 'Extraer campos y guardar';
+        } else {
+            document.getElementById('uzHint').textContent = 'PNG, JPG, JPEG, TIFF, BMP, PDF · máx. recomendado 20 MB';
+            document.getElementById('btnSubirLabel').textContent = 'Procesar con OCR';
+            document.getElementById('templateInfo').style.display = 'none';
+            document.getElementById('pdfPageWrap').style.display = 'none';
+            document.getElementById('zoneResultsInline').style.display = 'none';
+        }
+    }
+
+    function onTemplateChange() {
+        const sel = document.getElementById('templateSelect');
+        const plantilla = ALL_PLANTILLAS.find(p => p.id === parseInt(sel.value));
+        const infoDiv = document.getElementById('templateInfo');
+        if (plantilla && plantilla.zonas.length > 0) {
+            const campos = plantilla.zonas.map(z => z.nombre_campo).join(', ');
+            infoDiv.innerHTML = `<strong>${plantilla.nombre}</strong><br>Campos: ${escHtml(campos)}`;
+            infoDiv.style.display = 'block';
+        } else {
+            infoDiv.style.display = 'none';
+        }
+    }
+
+    // Mostrar selector de página si el archivo es PDF
+    fileInput.addEventListener('change', function() {
+        const isPdf = this.files.length > 0 && this.files[0].name.toLowerCase().endsWith('.pdf');
+        const usingTemplate = document.getElementById('chkTemplate').checked;
+        document.getElementById('pdfPageWrap').style.display =
+            (isPdf && usingTemplate) ? 'block' : 'none';
+    });
+
+    /* ── Variables de estado para el flujo preview→confirmar ── */
+    let _currentTempKey = null;
+
+    /* ── Submit con lógica dual ── */
+    uploadForm.addEventListener('submit', async function (e) {
+        const usingTemplate = document.getElementById('chkTemplate').checked;
+        const templateId    = document.getElementById('templateSelect').value;
+
+        if (usingTemplate && templateId) {
+            // ── MODO PREVIEW (extrae campos, no guarda aún) ──
+            e.preventDefault();
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Ocultar resultados anteriores
+            document.getElementById('zonePreviewWrap').style.display = 'none';
+            document.getElementById('zoneResultsInline').style.display = 'none';
+
+            btnSubir.disabled = true;
+            document.getElementById('uploadLoadingLabel').textContent = 'Extrayendo campos con OCR por zonas…';
+            uploadLoading.classList.add('active');
+
+            const paginaPdf = parseInt(document.getElementById('pdfPageInput').value || '1') - 1;
+            const fd = new FormData();
+            fd.append('archivo', file);
+            fd.append('idioma', document.getElementById('idioma').value);
+            fd.append('pagina_pdf', paginaPdf);
+
+            try {
+                const resp = await fetch(`/api/plantillas/${templateId}/preview`, {
+                    method: 'POST', body: fd,
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    alert('Error: ' + (err.detail || 'No se pudo procesar'));
+                    return;
+                }
+                const data = await resp.json();
+                _currentTempKey = data.temp_key;
+                mostrarPreview(data);
+            } catch {
+                alert('Error de conexión.');
+            } finally {
+                uploadLoading.classList.remove('active');
+                btnSubir.disabled = false;
+            }
+        } else {
+            // ── MODO OCR COMPLETO (comportamiento original) ──
+            btnSubir.disabled = true;
+            document.getElementById('uploadLoadingLabel').textContent = 'Procesando documento con OCR, por favor espere…';
+            uploadLoading.classList.add('active');
+            // El form hace submit normal a /subir
+        }
+    });
+
+    function mostrarPreview(data) {
+        document.getElementById('zonePreviewTitle').textContent =
+            data.plantilla_nombre + ' — ' + data.archivo_nombre;
+
+        document.getElementById('zonePreviewBody').innerHTML =
+            data.resultados.map(r => `
+            <div class="result-field">
+                <div class="result-field-name">${escHtml(r.nombre_campo)}</div>
+                <div class="result-field-val">${escHtml(r.texto_extraido) || '<span style="color:#94a3b8;">(sin texto detectado)</span>'}</div>
+            </div>`).join('');
+
+        document.getElementById('zonePreviewWrap').style.display = 'block';
+        document.getElementById('zonePreviewWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function confirmarGuardado() {
+        if (!_currentTempKey) return;
+        document.getElementById('btnConfirmar').disabled = true;
+        document.getElementById('confirmLoading').classList.add('active');
+
+        const fd = new FormData();
+        fd.append('temp_key', _currentTempKey);
+
+        try {
+            const resp = await fetch('/api/plantillas/confirmar', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert('Error al guardar: ' + (err.detail || 'Error desconocido'));
+                return;
+            }
+            const doc = await resp.json();
+
+            // Agregar a ALL_DOCS y actualizar home + explorador
+            ALL_DOCS.unshift({
+                id:              doc.id,
+                nombre_archivo:  doc.nombre_archivo,
+                tipo_archivo:    doc.tipo_archivo,
+                tamano_mb:       doc.tamano_mb,
+                texto_extraido:  doc.texto_extraido,
+                fecha_carga:     doc.fecha_carga,
+                idioma_ocr:      doc.idioma_ocr,
+                plantilla_nombre: doc.plantilla_nombre,
+                zona_resultados: doc.zona_resultados,
+            });
+            document.getElementById('sidebarCount').textContent = ALL_DOCS.length;
+            renderHomeDocs();   // actualizar tabla del home
+            updateStorageDisplay();
+
+            // Limpiar formulario de carga
+            uploadForm.reset();
+            uzFileName.textContent = '';
+            btnSubir.disabled = true;
+            document.getElementById('chkTemplate').checked = false;
+            onToggleTemplate();
+
+            _currentTempKey = null;
+            document.getElementById('zonePreviewWrap').style.display = 'none';
+
+            // Mostrar confirmación de guardado
+            document.getElementById('zoneResultsBody').innerHTML = `
+                <div style="display:flex; align-items:center; gap:0.5rem; padding:0.65rem 0.85rem;
+                            background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;
+                            font-size:0.82rem; color:#166534;">
+                    <i class="bi bi-floppy-fill"></i>
+                    <strong>${escHtml(doc.nombre_archivo)}</strong> guardado correctamente.
+                    <button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--success);"
+                            onclick="navigate('explorer')">Ver en Explorador →</button>
+                </div>` +
+                (doc.zona_resultados || []).map(r => `
+                <div class="result-field">
+                    <div class="result-field-name">${escHtml(r.nombre_campo)}</div>
+                    <div class="result-field-val">${escHtml(r.texto_extraido) || '<span style="color:#94a3b8;">(sin texto detectado)</span>'}</div>
+                </div>`).join('');
+            document.getElementById('zoneResultsInline').style.display = 'block';
+            document.getElementById('zoneResultsInline').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {
+            alert('Error de conexión.');
+        } finally {
+            document.getElementById('confirmLoading').classList.remove('active');
+            document.getElementById('btnConfirmar').disabled = false;
+        }
+    }
+
+    async function cancelarPreview() {
+        if (_currentTempKey) {
+            fetch(`/api/plantillas/temp/${_currentTempKey}`, { method: 'DELETE' }).catch(() => {});
+            _currentTempKey = null;
+        }
+        document.getElementById('zonePreviewWrap').style.display = 'none';
+        document.getElementById('zoneResultsInline').style.display = 'none';
+    }
 
     /* ═══════════════════════════════════════
        BUSCAR
@@ -1428,35 +2163,43 @@
         if (explorerView === 'grid') {
             container.innerHTML = `<div class="docs-grid">${docs.map(docCard).join('')}</div>`;
         } else {
-            const rows = docs.map(d => {
-                const badgeCls = d.tipo_archivo === '.pdf' ? 'badge-pdf' : 'badge-img';
-                return `
-                <tr>
-                    <td style="font-weight:500;">${escHtml(d.nombre_archivo)}</td>
-                    <td><span class="badge ${badgeCls}">${d.tipo_archivo.slice(1)}</span></td>
-                    <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
-                    <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
-                    <td style="color:var(--text-muted);">${d.idioma_ocr}</td>
-                    <td>
-                        <div class="action-group">
-                            <button class="btn btn-secondary btn-sm"
-                                    onclick="openOcrModal(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                                <i class="bi bi-eye"></i> OCR
-                            </button>
-                            <a href="/archivo/${d.id}" class="btn btn-success btn-sm">
-                                <i class="bi bi-download"></i> Original
-                            </a>
-                            <a href="/descargar/${d.id}" class="btn btn-secondary btn-sm">
-                                <i class="bi bi-file-text"></i> Texto
-                            </a>
-                            <button class="btn btn-danger btn-sm"
-                                    onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                                <i class="bi bi-trash3"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>`;
-            }).join('');
+                    const rows = docs.map(d => {
+                        const badgeCls = d.tipo_archivo === '.pdf' ? 'badge-pdf' : 'badge-img';
+                        const viewBtn = d.zona_resultados
+                            ? `<button class="btn btn-secondary btn-sm" onclick="openZonaResultsModal(${d.id})">
+                                   <i class="bi bi-layout-text-window-reverse"></i> Campos
+                               </button>`
+                            : `<button class="btn btn-secondary btn-sm"
+                                       onclick="openOcrModal(${d.id}, '${escAttr(d.nombre_archivo)}')">
+                                   <i class="bi bi-eye"></i> OCR
+                               </button>`;
+                        return `
+                        <tr>
+                            <td style="font-weight:500;">
+                                ${escHtml(d.nombre_archivo)}
+                                ${d.plantilla_nombre ? zonaBadge(d) : ''}
+                            </td>
+                            <td><span class="badge ${badgeCls}">${d.tipo_archivo.slice(1)}</span></td>
+                            <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
+                            <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
+                            <td style="color:var(--text-muted);">${d.plantilla_nombre || d.idioma_ocr}</td>
+                            <td>
+                                <div class="action-group">
+                                    ${viewBtn}
+                                    <a href="/archivo/${d.id}" class="btn btn-success btn-sm">
+                                        <i class="bi bi-download"></i> Original
+                                    </a>
+                                    <a href="/descargar/${d.id}" class="btn btn-secondary btn-sm">
+                                        <i class="bi bi-file-text"></i> Texto
+                                    </a>
+                                    <button class="btn btn-danger btn-sm"
+                                            onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
+                                        <i class="bi bi-trash3"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('');
 
             container.innerHTML = `
                 <table class="tbl">
@@ -1471,20 +2214,34 @@
         }
     }
 
+    function zonaBadge(d) {
+        if (!d.plantilla_nombre) return '';
+        return `<span style="font-size:0.68rem; font-weight:700; background:#eef2ff; color:var(--accent);
+                padding:0.12rem 0.45rem; border-radius:5px; margin-left:0.35rem; vertical-align:middle;">
+                ZONAS</span>`;
+    }
+
     function docCard(d) {
         const iconMap = { '.pdf': '📑', '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.tiff': '🖼️', '.bmp': '🖼️' };
         const icon = iconMap[d.tipo_archivo] || '📄';
         const cls  = d.tipo_archivo === '.pdf' ? 'pdf' : 'img';
+        const metaExtra = d.plantilla_nombre
+            ? `<br><span style="color:var(--accent); font-size:0.72rem;">⬡ ${escHtml(d.plantilla_nombre)}</span>` : '';
         return `
         <div class="doc-card">
             <div class="dc-icon ${cls}">${icon}</div>
             <div class="dc-name" title="${escAttr(d.nombre_archivo)}">${escHtml(d.nombre_archivo)}</div>
-            <div class="dc-meta">${d.tamano_mb} MB · ${d.fecha_carga}</div>
+            <div class="dc-meta">${d.tamano_mb} MB · ${d.fecha_carga}${metaExtra}</div>
             <div class="dc-actions">
-                <button class="btn btn-secondary btn-sm"
-                        onclick="openOcrModal(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                    <i class="bi bi-eye"></i>
-                </button>
+                ${d.zona_resultados
+                    ? `<button class="btn btn-secondary btn-sm" onclick="openZonaResultsModal(${d.id})">
+                           <i class="bi bi-layout-text-window-reverse"></i>
+                       </button>`
+                    : `<button class="btn btn-secondary btn-sm"
+                               onclick="openOcrModal(${d.id}, '${escAttr(d.nombre_archivo)}')">
+                           <i class="bi bi-eye"></i>
+                       </button>`
+                }
                 <a href="/archivo/${d.id}" class="btn btn-success btn-sm">
                     <i class="bi bi-download"></i>
                 </a>
@@ -1599,6 +2356,30 @@
     }
 
     /* ═══════════════════════════════════════
+       MODAL CAMPOS DE ZONA
+    ═══════════════════════════════════════ */
+    function openZonaResultsModal(docId) {
+        const doc = ALL_DOCS.find(d => d.id === docId);
+        if (!doc || !doc.zona_resultados) return;
+
+        document.getElementById('ocrModalTitle').textContent = 'Campos extraídos — ' + doc.nombre_archivo;
+        document.getElementById('ocrModalSub').textContent = 'Plantilla: ' + (doc.plantilla_nombre || '—');
+
+        const body = document.getElementById('ocrModalBody');
+        body.style.fontFamily = 'inherit';
+        body.style.background = 'transparent';
+        body.style.border = 'none';
+        body.style.padding = '0';
+        body.innerHTML = doc.zona_resultados.map(r => `
+            <div class="result-field">
+                <div class="result-field-name">${escHtml(r.nombre_campo)}</div>
+                <div class="result-field-val">${escHtml(r.texto_extraido) || '<span style="color:#94a3b8;">(sin texto detectado)</span>'}</div>
+            </div>`).join('');
+
+        document.getElementById('ocrModal').classList.add('open');
+    }
+
+    /* ═══════════════════════════════════════
        MODAL OCR
     ═══════════════════════════════════════ */
     function openOcrModal(docId, nombre) {
@@ -1635,7 +2416,13 @@
         try {
             const resp = await fetch('/eliminar/' + docId, { method: 'DELETE' });
             if (resp.ok) {
-                location.reload();
+                // Eliminar de ALL_DOCS y actualizar vistas sin recargar
+                const idx = ALL_DOCS.findIndex(d => d.id === docId);
+                if (idx !== -1) ALL_DOCS.splice(idx, 1);
+                document.getElementById('sidebarCount').textContent = ALL_DOCS.length;
+                renderHomeDocs();
+                renderExplorer();
+                updateStorageDisplay();
             } else {
                 alert('Error al eliminar el documento.');
             }
@@ -1660,8 +2447,475 @@
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+            cancelZone();
         }
     });
+
+    /* ═══════════════════════════════════════
+       PLANTILLAS — SECCIÓN
+    ═══════════════════════════════════════ */
+    let ALL_PLANTILLAS = {{ plantillas_json | safe }};
+    let currentPlantillaId = null;
+
+    function renderPlantillas() {
+        const grid = document.getElementById('plantillasGrid');
+        const badge = document.getElementById('sidebarPlantillas');
+        badge.textContent = ALL_PLANTILLAS.length;
+
+        if (ALL_PLANTILLAS.length === 0) {
+            grid.innerHTML = `
+                <div class="empty" style="grid-column:1/-1;">
+                    <i class="bi bi-layout-text-window-reverse"></i>
+                    <p class="empty-title">Sin plantillas aún</p>
+                    <p>Crea tu primera plantilla para usar OCR por zonas.</p>
+                </div>`;
+            return;
+        }
+
+        grid.innerHTML = ALL_PLANTILLAS.map(p => `
+            <div class="plantilla-card">
+                <div class="pc-thumb">
+                    <img src="/uploads/${p.ruta_imagen_ref.replace(/.*uploads[\\/]/, '')}"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                         alt="">
+                    <div class="pc-thumb-empty" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
+                        <i class="bi bi-image"></i>
+                    </div>
+                    <span class="pc-zone-count">${p.zonas.length} zona${p.zonas.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="pc-body">
+                    <div class="pc-name">${escHtml(p.nombre)}</div>
+                    <div class="pc-desc">${escHtml(p.descripcion || 'Sin descripción')}</div>
+                    <div class="pc-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="openZoneEditor(${p.id})">
+                            <i class="bi bi-pencil-square"></i> Editar zonas
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="openProcessModal(${p.id})">
+                            <i class="bi bi-cpu"></i> Procesar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="deletePlantilla(${p.id}, '${escAttr(p.nombre)}')">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`).join('');
+    }
+
+    /* ─── Nueva Plantilla ─── */
+    function openNewPlantillaModal() {
+        document.getElementById('npNombre').value = '';
+        document.getElementById('npDesc').value = '';
+        document.getElementById('npFileName').textContent = '';
+        document.getElementById('npFileInput').value = '';
+        document.getElementById('npSubmitBtn').disabled = true;
+        document.getElementById('npLoading').classList.remove('active');
+        document.getElementById('newPlantillaModal').classList.add('open');
+        setTimeout(() => document.getElementById('npNombre').focus(), 100);
+    }
+
+    const npFileInput = document.getElementById('npFileInput');
+    npFileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            document.getElementById('npFileName').textContent = '📎 ' + this.files[0].name;
+            document.getElementById('npSubmitBtn').disabled = false;
+        }
+    });
+
+    document.getElementById('newPlantillaForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const nombre = document.getElementById('npNombre').value.trim();
+        const file   = npFileInput.files[0];
+        if (!nombre || !file) return;
+
+        document.getElementById('npSubmitBtn').disabled = true;
+        document.getElementById('npLoading').classList.add('active');
+
+        const fd = new FormData();
+        fd.append('nombre', nombre);
+        fd.append('descripcion', document.getElementById('npDesc').value.trim());
+        fd.append('imagen_ref', file);
+
+        try {
+            const resp = await fetch('/api/plantillas', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert('Error: ' + (err.detail || 'No se pudo crear la plantilla'));
+                return;
+            }
+            const nueva = await resp.json();
+            ALL_PLANTILLAS.unshift(nueva);
+            renderPlantillas();
+            closeModal('newPlantillaModal');
+            // Abrir editor de zonas de inmediato
+            openZoneEditor(nueva.id);
+        } catch {
+            alert('Error de conexión.');
+        } finally {
+            document.getElementById('npLoading').classList.remove('active');
+            document.getElementById('npSubmitBtn').disabled = false;
+        }
+    });
+
+    /* ─── Eliminar Plantilla ─── */
+    async function deletePlantilla(id, nombre) {
+        if (!confirm(`¿Eliminar la plantilla "${nombre}"? Se borrarán sus zonas e imagen de referencia.`)) return;
+        try {
+            const resp = await fetch(`/api/plantillas/${id}`, { method: 'DELETE' });
+            if (resp.ok) {
+                ALL_PLANTILLAS = ALL_PLANTILLAS.filter(p => p.id !== id);
+                renderPlantillas();
+            } else {
+                alert('Error al eliminar la plantilla.');
+            }
+        } catch {
+            alert('Error de conexión.');
+        }
+    }
+
+    /* ═══════════════════════════════════════
+       EDITOR DE ZONAS
+    ═══════════════════════════════════════ */
+    let zeZones     = [];       // zonas confirmadas
+    let zeDrawing   = false;
+    let zeStartX    = 0;
+    let zeStartY    = 0;
+    let zePending   = null;     // rect recién dibujado, esperando nombre
+    let zeScaleX    = 1;        // factores de escala display → original
+    let zeScaleY    = 1;
+    let zeCanvas    = null;
+    let zeCtx       = null;
+
+    function openZoneEditor(plantillaId) {
+        const plantilla = ALL_PLANTILLAS.find(p => p.id === plantillaId);
+        if (!plantilla) return;
+
+        currentPlantillaId = plantillaId;
+        document.getElementById('zeTitle').textContent = plantilla.nombre;
+        document.getElementById('zeLoading').classList.remove('active');
+
+        // Cargar zonas existentes en coordenadas originales
+        zeZones = plantilla.zonas.map(z => ({ ...z }));
+
+        const img = document.getElementById('zeRefImg');
+        // Construir URL de la imagen de referencia
+        const rutaRel = plantilla.ruta_imagen_ref.replace(/.*uploads[\\/]/, '');
+        img.src = '/uploads/' + rutaRel;
+
+        img.onload = function() {
+            initCanvas(img);
+        };
+
+        // Si la imagen ya está cargada (mismo src)
+        if (img.complete && img.naturalWidth) {
+            initCanvas(img);
+        }
+
+        document.getElementById('zoneEditorModal').classList.add('open');
+    }
+
+    function initCanvas(img) {
+        const dw = img.offsetWidth;
+        const dh = img.offsetHeight;
+
+        zeCanvas = document.getElementById('zeCanvas');
+        zeCanvas.width  = dw;
+        zeCanvas.height = dh;
+        zeCtx = zeCanvas.getContext('2d');
+
+        // Factores de escala original → display
+        const plantilla = ALL_PLANTILLAS.find(p => p.id === currentPlantillaId);
+        zeScaleX = dw / (plantilla ? plantilla.img_ancho : dw);
+        zeScaleY = dh / (plantilla ? plantilla.img_alto  : dh);
+
+        redrawZones();
+        updateZoneList();
+        document.getElementById('zeSaveBtn').disabled = zeZones.length === 0;
+
+        // Eventos de dibujo
+        zeCanvas.onmousedown = onMouseDown;
+        zeCanvas.onmousemove = onMouseMove;
+        zeCanvas.onmouseup   = onMouseUp;
+    }
+
+    function canvasCoords(e) {
+        const rect = zeCanvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+        };
+    }
+
+    function onMouseDown(e) {
+        if (zePending) return;  // hay un popup abierto
+        const { x, y } = canvasCoords(e);
+        zeDrawing = true;
+        zeStartX = x;
+        zeStartY = y;
+    }
+
+    function onMouseMove(e) {
+        if (!zeDrawing) return;
+        const { x, y } = canvasCoords(e);
+        redrawZones();
+        // Dibujar rectángulo en progreso
+        zeCtx.save();
+        zeCtx.strokeStyle = '#ef4444';
+        zeCtx.lineWidth   = 2;
+        zeCtx.setLineDash([5, 4]);
+        zeCtx.fillStyle   = 'rgba(239,68,68,0.08)';
+        const rw = x - zeStartX;
+        const rh = y - zeStartY;
+        zeCtx.fillRect(zeStartX, zeStartY, rw, rh);
+        zeCtx.strokeRect(zeStartX, zeStartY, rw, rh);
+        zeCtx.setLineDash([]);
+        zeCtx.restore();
+    }
+
+    function onMouseUp(e) {
+        if (!zeDrawing) return;
+        zeDrawing = false;
+        const { x, y } = canvasCoords(e);
+
+        // Normalizar rect (permitir arrastre en cualquier dirección)
+        const nx = Math.min(zeStartX, x);
+        const ny = Math.min(zeStartY, y);
+        const nw = Math.abs(x - zeStartX);
+        const nh = Math.abs(y - zeStartY);
+
+        if (nw < 10 || nh < 10) { redrawZones(); return; }
+
+        zePending = { x: nx, y: ny, w: nw, h: nh };
+        showNamePopup(nx + nw, ny);
+    }
+
+    function showNamePopup(x, y) {
+        const popup = document.getElementById('zeNamePopup');
+        const area  = document.getElementById('zeCanvasArea');
+        const areaRect = area.getBoundingClientRect();
+
+        // Posicionar el popup relativo al canvas area
+        const canvasRect = zeCanvas.getBoundingClientRect();
+        let px = (canvasRect.left - areaRect.left) + x + 8;
+        let py = (canvasRect.top  - areaRect.top)  + y;
+
+        // Evitar que se salga por la derecha
+        if (px + 210 > area.offsetWidth) px = (canvasRect.left - areaRect.left) + zePending.x - 215;
+        if (py < 0) py = 0;
+
+        popup.style.left    = px + 'px';
+        popup.style.top     = py + 'px';
+        popup.style.display = 'block';
+
+        const input = document.getElementById('zeNameInput');
+        input.value = '';
+        setTimeout(() => input.focus(), 50);
+
+        // Confirmar con Enter
+        input.onkeydown = function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); confirmZone(); }
+            if (e.key === 'Escape') cancelZone();
+        };
+    }
+
+    function confirmZone() {
+        const nombre = document.getElementById('zeNameInput').value.trim();
+        if (!nombre || !zePending) { cancelZone(); return; }
+
+        // Convertir coordenadas display → original
+        zeZones.push({
+            nombre_campo: nombre,
+            x:     Math.round(zePending.x / zeScaleX),
+            y:     Math.round(zePending.y / zeScaleY),
+            ancho: Math.round(zePending.w / zeScaleX),
+            alto:  Math.round(zePending.h / zeScaleY),
+            orden: zeZones.length,
+        });
+
+        zePending = null;
+        document.getElementById('zeNamePopup').style.display = 'none';
+        redrawZones();
+        updateZoneList();
+        document.getElementById('zeSaveBtn').disabled = false;
+    }
+
+    function cancelZone() {
+        zePending = null;
+        const popup = document.getElementById('zeNamePopup');
+        if (popup) popup.style.display = 'none';
+        if (zeCtx && zeCanvas) redrawZones();
+    }
+
+    function redrawZones() {
+        if (!zeCtx || !zeCanvas) return;
+        zeCtx.clearRect(0, 0, zeCanvas.width, zeCanvas.height);
+        const colors = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+
+        zeZones.forEach((z, i) => {
+            const color = colors[i % colors.length];
+            const dx = z.x * zeScaleX;
+            const dy = z.y * zeScaleY;
+            const dw = z.ancho * zeScaleX;
+            const dh = z.alto  * zeScaleY;
+
+            zeCtx.fillStyle   = color + '22';
+            zeCtx.fillRect(dx, dy, dw, dh);
+            zeCtx.strokeStyle = color;
+            zeCtx.lineWidth   = 2;
+            zeCtx.strokeRect(dx, dy, dw, dh);
+
+            // Etiqueta
+            zeCtx.fillStyle = color;
+            zeCtx.font      = 'bold 11px Inter, sans-serif';
+            const label = `${i + 1}. ${z.nombre_campo}`;
+            const tw = zeCtx.measureText(label).width;
+            zeCtx.fillRect(dx, dy - 18, tw + 8, 17);
+            zeCtx.fillStyle = 'white';
+            zeCtx.fillText(label, dx + 4, dy - 5);
+        });
+    }
+
+    function updateZoneList() {
+        const list = document.getElementById('zeZoneList');
+        if (zeZones.length === 0) {
+            list.innerHTML = '<div class="ze-empty">Ninguna zona definida aún</div>';
+            return;
+        }
+        const colors = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+        list.innerHTML = zeZones.map((z, i) => `
+            <div class="ze-zone-item">
+                <div class="ze-zone-num" style="background:${colors[i % colors.length]}">${i + 1}</div>
+                <div class="ze-zone-name">${escHtml(z.nombre_campo)}</div>
+                <button class="ze-zone-del" onclick="deleteZone(${i})" title="Eliminar zona">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>`).join('');
+    }
+
+    function deleteZone(index) {
+        zeZones.splice(index, 1);
+        zeZones.forEach((z, i) => z.orden = i);
+        redrawZones();
+        updateZoneList();
+        document.getElementById('zeSaveBtn').disabled = zeZones.length === 0;
+    }
+
+    function clearAllZones() {
+        if (zeZones.length === 0) return;
+        if (!confirm('¿Eliminar todas las zonas?')) return;
+        zeZones = [];
+        redrawZones();
+        updateZoneList();
+        document.getElementById('zeSaveBtn').disabled = true;
+    }
+
+    async function saveZones() {
+        if (!currentPlantillaId || zeZones.length === 0) return;
+        document.getElementById('zeSaveBtn').disabled = true;
+        document.getElementById('zeLoading').classList.add('active');
+
+        try {
+            const resp = await fetch(`/api/plantillas/${currentPlantillaId}/zonas`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ zonas: zeZones }),
+            });
+            if (!resp.ok) { alert('Error al guardar las zonas.'); return; }
+            const updated = await resp.json();
+            const idx = ALL_PLANTILLAS.findIndex(p => p.id === currentPlantillaId);
+            if (idx !== -1) ALL_PLANTILLAS[idx] = updated;
+            renderPlantillas();
+            closeModal('zoneEditorModal');
+        } catch {
+            alert('Error de conexión.');
+        } finally {
+            document.getElementById('zeLoading').classList.remove('active');
+            document.getElementById('zeSaveBtn').disabled = false;
+        }
+    }
+
+    /* ═══════════════════════════════════════
+       PROCESAR CON PLANTILLA
+    ═══════════════════════════════════════ */
+    let pmPlantillaId = null;
+
+    function openProcessModal(plantillaId) {
+        const plantilla = ALL_PLANTILLAS.find(p => p.id === plantillaId);
+        if (!plantilla) return;
+
+        if (plantilla.zonas.length === 0) {
+            alert(`La plantilla "${plantilla.nombre}" no tiene zonas definidas. Edita la plantilla primero.`);
+            return;
+        }
+
+        pmPlantillaId = plantillaId;
+        document.getElementById('pmTitle').textContent = plantilla.nombre;
+        document.getElementById('pmFileName').textContent = '';
+        document.getElementById('pmFileInput').value = '';
+        document.getElementById('pmSubmitBtn').disabled = true;
+        document.getElementById('pmLoading').classList.remove('active');
+        document.getElementById('pmResults').style.display = 'none';
+        document.getElementById('processModal').classList.add('open');
+    }
+
+    const pmFileInput = document.getElementById('pmFileInput');
+    pmFileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            document.getElementById('pmFileName').textContent = '📎 ' + this.files[0].name;
+            document.getElementById('pmSubmitBtn').disabled = false;
+            document.getElementById('pmResults').style.display = 'none';
+        }
+    });
+
+    document.getElementById('processForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const file = pmFileInput.files[0];
+        if (!file || !pmPlantillaId) return;
+
+        document.getElementById('pmSubmitBtn').disabled = true;
+        document.getElementById('pmLoading').classList.add('active');
+        document.getElementById('pmResults').style.display = 'none';
+
+        const fd = new FormData();
+        fd.append('archivo', file);
+        fd.append('idioma', document.getElementById('pmIdioma').value);
+
+        try {
+            const resp = await fetch(`/api/plantillas/${pmPlantillaId}/procesar`, {
+                method: 'POST',
+                body: fd,
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert('Error: ' + (err.detail || 'No se pudo procesar el documento'));
+                return;
+            }
+            const data = await resp.json();
+            renderProcessResults(data.resultados);
+        } catch {
+            alert('Error de conexión.');
+        } finally {
+            document.getElementById('pmLoading').classList.remove('active');
+            document.getElementById('pmSubmitBtn').disabled = false;
+        }
+    });
+
+    function renderProcessResults(resultados) {
+        const body = document.getElementById('pmResultsBody');
+        body.innerHTML = resultados.map(r => `
+            <div class="result-field">
+                <div class="result-field-name">${escHtml(r.nombre_campo)}</div>
+                <div class="result-field-val">${escHtml(r.texto_extraido) || '<span style="color:#94a3b8;">(sin texto detectado)</span>'}</div>
+            </div>`).join('');
+        document.getElementById('pmResults').style.display = 'block';
+    }
+
+    /* Inicializar al cargar */
+    (function() {
+        renderPlantillas();
+
+        // Actualizar metadatos de navegación para la nueva sección
+        SECTION_META.plantillas = { title: 'Plantillas OCR', bread: 'PaperVault / Plantillas OCR' };
+    })();
 </script>
 </body>
 </html>

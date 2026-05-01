@@ -66,6 +66,77 @@ def procesar_documento(ruta_archivo: str, idioma: str = "spa") -> str:
         return extraer_texto_imagen(ruta_archivo, idioma)
 
 
+def procesar_por_zonas(
+    ruta_archivo: str,
+    zonas: list,
+    img_ancho_ref: int,
+    img_alto_ref: int,
+    idioma: str = "spa",
+    pagina_pdf: int = 0,
+) -> list:
+    """
+    Aplica OCR únicamente sobre las zonas definidas en una plantilla.
+
+    Acepta imágenes (PNG/JPG/TIFF/BMP) y PDFs. Para PDFs, procesa la
+    página indicada por `pagina_pdf` (0-based; por defecto la primera).
+
+    Las coordenadas de `zonas` están en píxeles del archivo de referencia
+    (img_ancho_ref × img_alto_ref). Si el documento tiene distinto tamaño
+    las coordenadas se escalan automáticamente.
+
+    Returns:
+        Lista de dicts {nombre_campo, texto_extraido, x, y, ancho, alto}.
+    """
+    extension = os.path.splitext(ruta_archivo)[1].lower()
+
+    if extension in FORMATOS_PDF:
+        paginas = convert_from_path(
+            ruta_archivo,
+            dpi=300,
+            first_page=pagina_pdf + 1,
+            last_page=pagina_pdf + 1,
+        )
+        if not paginas:
+            raise ValueError(f"No se pudo convertir la página {pagina_pdf + 1} del PDF")
+        pil_img = paginas[0].convert("RGB")
+    else:
+        pil_img = Image.open(ruta_archivo).convert("RGB")
+
+    w_real, h_real = pil_img.size
+
+    escala_x = w_real / img_ancho_ref if img_ancho_ref else 1.0
+    escala_y = h_real / img_alto_ref  if img_alto_ref  else 1.0
+
+    resultados = []
+    for zona in zonas:
+        x = int(zona["x"] * escala_x)
+        y = int(zona["y"] * escala_y)
+        w = int(zona["ancho"] * escala_x)
+        h = int(zona["alto"]  * escala_y)
+
+        # Garantizar que el recorte quede dentro de la imagen
+        x = max(0, min(x, w_real - 1))
+        y = max(0, min(y, h_real - 1))
+        w = max(1, min(w, w_real - x))
+        h = max(1, min(h, h_real - y))
+
+        recorte_pil = pil_img.crop((x, y, x + w, y + h))
+
+        # Preprocesamiento con OpenCV para mejorar precisión
+        recorte_cv = cv2.cvtColor(np.array(recorte_pil), cv2.COLOR_RGB2BGR)
+        recorte_proc = preprocesar_imagen(recorte_cv)
+        recorte_final = Image.fromarray(recorte_proc)
+
+        texto = pytesseract.image_to_string(recorte_final, lang=idioma).strip()
+        resultados.append({
+            "nombre_campo": zona["nombre_campo"],
+            "texto_extraido": texto,
+            "x": x, "y": y, "ancho": w, "alto": h,
+        })
+
+    return resultados
+
+
 def verificar_tesseract() -> bool:
     """Verifica que Tesseract esté instalado y accesible."""
     try:
