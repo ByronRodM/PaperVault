@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaperVault — Iniciar Sesión</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            background: #f8fafc;
+        }
+
+        /* ── BRAND PANEL ── */
+        .brand-panel {
+            width: 45%;
+            background: linear-gradient(150deg, #0f172a 0%, #1a2f5a 60%, #1e3a8a 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-panel::before {
+            content: '';
+            position: absolute;
+            width: 480px; height: 480px;
+            border-radius: 50%;
+            background: rgba(99, 102, 241, 0.12);
+            top: -140px; right: -140px;
+        }
+
+        .brand-panel::after {
+            content: '';
+            position: absolute;
+            width: 320px; height: 320px;
+            border-radius: 50%;
+            background: rgba(99, 102, 241, 0.08);
+            bottom: -100px; left: -100px;
+        }
+
+        .logo-wrap {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .logo-img {
+            width: 150px;
+            height: 150px;
+            object-fit: contain;
+            filter:
+                drop-shadow(0 0 0 white)
+                drop-shadow(1px 0 0 white)
+                drop-shadow(-1px 0 0 white)
+                drop-shadow(0 1px 0 white)
+                drop-shadow(0 -1px 0 white);
+            margin: 0 auto 1.25rem auto;
+            display: block;
+        }
+
+        .brand-name {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.4rem;
+        }
+
+        .brand-tagline {
+            font-size: 0.9rem;
+            opacity: 0.65;
+            text-align: center;
+            max-width: 270px;
+            line-height: 1.6;
+        }
+
+        .features-list {
+            list-style: none;
+            margin-top: 3rem;
+            width: 100%;
+            max-width: 290px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .features-list li {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            padding: 0.65rem 0;
+            font-size: 0.88rem;
+            color: rgba(255,255,255,0.75);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+
+        .features-list li:last-child { border-bottom: none; }
+
+        .features-list li i {
+            color: #818cf8;
+            font-size: 1.05rem;
+            flex-shrink: 0;
+        }
+
+        /* ── LOGIN PANEL ── */
+        .login-panel {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .login-box {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-box h2 {
+            font-size: 1.65rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.4rem;
+        }
+
+        .login-box .subtitle {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .error-alert {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 0.75rem 1rem;
+            border-radius: 9px;
+            font-size: 0.87rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group { margin-bottom: 1.2rem; }
+
+        .form-group label {
+            display: block;
+            font-size: 0.83rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.35rem;
+        }
+
+        .input-wrap {
+            position: relative;
+        }
+
+        .input-wrap i {
+            position: absolute;
+            left: 0.9rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: 1rem;
+            pointer-events: none;
+        }
+
+        .input-wrap input {
+            width: 100%;
+            padding: 0.72rem 0.9rem 0.72rem 2.6rem;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: 'Inter', sans-serif;
+            color: #0f172a;
+            background: white;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input-wrap input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 0.8rem;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-login:hover {
+            background: #4f46e5;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(99,102,241,0.35);
+        }
+
+        .btn-login:active { transform: translateY(0); }
+
+        .demo-hint {
+            margin-top: 1.75rem;
+            padding: 0.85rem 1rem;
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 9px;
+            font-size: 0.82rem;
+            color: #0369a1;
+            line-height: 1.6;
+        }
+
+        .demo-hint strong {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .demo-hint code {
+            background: rgba(3,105,161,0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+        }
+
+        @media (max-width: 768px) {
+            .brand-panel { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── Brand Panel ── -->
+    <div class="brand-panel">
+        <div class="logo-wrap">
+            <img src="/static/logo.png" class="logo-img" alt="PaperVault">
+            <div class="brand-name">PaperVault</div>
+            <div class="brand-tagline">Sistema de Gestión Documental con reconocimiento óptico de caracteres</div>
+        </div>
+        <ul class="features-list">
+            <li><i class="bi bi-scan2"></i> Procesamiento OCR con Tesseract</li>
+            <li><i class="bi bi-search"></i> Búsqueda por contenido de texto</li>
+            <li><i class="bi bi-folder2-open"></i> Explorador de documentos</li>
+            <li><i class="bi bi-shield-lock"></i> Almacenamiento seguro</li>
+            <li><i class="bi bi-bar-chart-line"></i> Reportes y estadísticas</li>
+        </ul>
+    </div>
+
+    <!-- ── Login Panel ── -->
+    <div class="login-panel">
+        <div class="login-box">
+            <h2>Bienvenido de nuevo</h2>
+            <p class="subtitle">Inicia sesión para acceder a tu bóveda de documentos</p>
+
+            {% if error %}
+            <div class="error-alert">
+                <i class="bi bi-exclamation-circle-fill"></i>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form action="/login" method="post" autocomplete="on">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <div class="input-wrap">
+                        <i class="bi bi-person"></i>
+                        <input type="text" id="username" name="username"
+                               placeholder="Ingresa tu usuario" required autofocus>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <div class="input-wrap">
+                        <i class="bi bi-lock"></i>
+                        <input type="password" id="password" name="password"
+                               placeholder="Ingresa tu contraseña" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login">
+                    <i class="bi bi-box-arrow-in-right"></i>
+                    Iniciar Sesión
+                </button>
+            </form>
+
+            <div class="demo-hint">
+                <strong>Credenciales de demostración</strong>
+                Usuario: <code>admin</code> &nbsp;·&nbsp; Contraseña: <code>admin123</code>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
