@@ -22,6 +22,7 @@ class Documento(Base):
     texto_extraido = Column(Text, default="")
     fecha_carga = Column(DateTime, default=datetime.now)
     idioma_ocr = Column(String(10), default="spa")
+    ocr_confianza = Column(Float, nullable=True)          # confianza promedio 0-1
     # OCR por zonas — nulos si se procesó con OCR completo
     plantilla_ocr_id = Column(Integer, ForeignKey("plantillas_ocr.id"), nullable=True)
     zona_resultados_json = Column(Text, nullable=True)
@@ -43,6 +44,7 @@ class Documento(Base):
             "texto_extraido": self.texto_extraido,
             "fecha_carga": self.fecha_carga.strftime("%d/%m/%Y %H:%M:%S"),
             "idioma_ocr": self.idioma_ocr,
+            "ocr_confianza": round(self.ocr_confianza, 4) if self.ocr_confianza is not None else None,
             "plantilla_ocr_id": self.plantilla_ocr_id,
             "plantilla_nombre": self.plantilla_ocr.nombre if self.plantilla_ocr else None,
             "zona_resultados": zonas,
@@ -125,6 +127,7 @@ def _migrate():
     migraciones = [
         "ALTER TABLE documentos ADD COLUMN plantilla_ocr_id INTEGER REFERENCES plantillas_ocr(id)",
         "ALTER TABLE documentos ADD COLUMN zona_resultados_json TEXT",
+        "ALTER TABLE documentos ADD COLUMN ocr_confianza REAL",
     ]
     with engine.connect() as conn:
         for sql in migraciones:

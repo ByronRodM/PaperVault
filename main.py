@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from database import init_db, get_db, Documento, PlantillaOCR, ZonaOCR
-from ocr_engine import procesar_documento, procesar_por_zonas, verificar_tesseract, FORMATOS_SOPORTADOS
+from ocr_engine import procesar_documento, procesar_por_zonas, verificar_paddle, FORMATOS_SOPORTADOS, FORMATOS_IMAGEN
 
 UPLOAD_DIR = "uploads"
 REFERENCIAS_DIR = os.path.join(UPLOAD_DIR, "referencias")
@@ -72,10 +72,10 @@ def get_user(request: Request) -> Optional[str]:
 def startup():
     init_db()
     print("Base de datos inicializada.")
-    if verificar_tesseract():
-        print("Motor OCR listo.")
+    if verificar_paddle():
+        print("Motor OCR (PaddleOCR) listo.")
     else:
-        print("ADVERTENCIA: Tesseract no está configurado correctamente.")
+        print("ADVERTENCIA: PaddleOCR no está disponible.")
 
 
 # ── Autenticación ─────────────────────────────────────────
@@ -174,7 +174,7 @@ async def subir_documento(
     tamano_mb = os.path.getsize(ruta_destino) / (1024 * 1024)
 
     try:
-        texto = procesar_documento(ruta_destino, idioma)
+        texto, confianza = procesar_documento(ruta_destino, idioma)
     except Exception as e:
         os.remove(ruta_destino)
         raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
@@ -186,6 +186,7 @@ async def subir_documento(
         ruta_archivo=ruta_destino,
         texto_extraido=texto,
         idioma_ocr=idioma,
+        ocr_confianza=confianza,
     )
     db.add(documento)
     db.commit()
@@ -404,10 +405,11 @@ async def procesar_con_zonas(
         os.remove(ruta_destino)
         raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
 
-    # Construir texto_extraido legible (para búsqueda en el explorador)
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
     )
+    scores = [r["confianza"] for r in resultados if r.get("confianza", 0) > 0]
+    confianza_zonas = round(sum(scores) / len(scores), 4) if scores else 0.0
 
     documento = Documento(
         nombre_archivo=archivo.filename,
@@ -416,6 +418,7 @@ async def procesar_con_zonas(
         ruta_archivo=ruta_destino,
         texto_extraido=texto_legible,
         idioma_ocr=idioma,
+        ocr_confianza=confianza_zonas,
         plantilla_ocr_id=plantilla_id,
         zona_resultados_json=json.dumps(resultados, ensure_ascii=False),
     )
@@ -526,6 +529,8 @@ async def confirmar_zona(
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
     )
+    scores = [r["confianza"] for r in resultados if r.get("confianza", 0) > 0]
+    confianza_zonas = round(sum(scores) / len(scores), 4) if scores else 0.0
 
     documento = Documento(
         nombre_archivo=cache["archivo_nombre"],
@@ -534,6 +539,7 @@ async def confirmar_zona(
         ruta_archivo=ruta_destino,
         texto_extraido=texto_legible,
         idioma_ocr=cache["idioma"],
+        ocr_confianza=confianza_zonas,
         plantilla_ocr_id=cache["plantilla_id"],
         zona_resultados_json=json.dumps(resultados, ensure_ascii=False),
     )

@@ -1710,7 +1710,7 @@
                    </button>`;
             return `<tr>
                 <td style="font-weight:500; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    ${escHtml(d.nombre_archivo)}${d.plantilla_nombre ? zonaBadge(d) : ''}
+                    ${escHtml(d.nombre_archivo)}${d.plantilla_nombre ? zonaBadge(d) : ''}${confianzaBadge(d.ocr_confianza)}
                 </td>
                 <td><span class="badge ${badgeCls}">${ext}</span></td>
                 <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
@@ -1974,6 +1974,7 @@
                 texto_extraido:  doc.texto_extraido,
                 fecha_carga:     doc.fecha_carga,
                 idioma_ocr:      doc.idioma_ocr,
+                ocr_confianza:   doc.ocr_confianza,
                 plantilla_nombre: doc.plantilla_nombre,
                 zona_resultados: doc.zona_resultados,
             });
@@ -2177,7 +2178,7 @@
                         <tr>
                             <td style="font-weight:500;">
                                 ${escHtml(d.nombre_archivo)}
-                                ${d.plantilla_nombre ? zonaBadge(d) : ''}
+                                ${d.plantilla_nombre ? zonaBadge(d) : ''}${confianzaBadge(d.ocr_confianza)}
                             </td>
                             <td><span class="badge ${badgeCls}">${d.tipo_archivo.slice(1)}</span></td>
                             <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
@@ -2221,6 +2222,17 @@
                 ZONAS</span>`;
     }
 
+    function confianzaBadge(c) {
+        if (c === null || c === undefined) return '';
+        const pct  = Math.round(c * 100);
+        const color = pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626';
+        const bg    = pct >= 90 ? '#f0fdf4' : pct >= 70 ? '#fffbeb' : '#fef2f2';
+        return `<span title="Confianza OCR promedio" style="font-size:0.68rem; font-weight:700;
+                background:${bg}; color:${color}; padding:0.12rem 0.45rem;
+                border-radius:5px; margin-left:0.35rem; vertical-align:middle;">
+                ${pct}%</span>`;
+    }
+
     function docCard(d) {
         const iconMap = { '.pdf': '📑', '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.tiff': '🖼️', '.bmp': '🖼️' };
         const icon = iconMap[d.tipo_archivo] || '📄';
@@ -2232,6 +2244,7 @@
             <div class="dc-icon ${cls}">${icon}</div>
             <div class="dc-name" title="${escAttr(d.nombre_archivo)}">${escHtml(d.nombre_archivo)}</div>
             <div class="dc-meta">${d.tamano_mb} MB · ${d.fecha_carga}${metaExtra}</div>
+            ${d.ocr_confianza !== null && d.ocr_confianza !== undefined ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem;">Confianza OCR: ${confianzaBadge(d.ocr_confianza)}</div>` : ''}
             <div class="dc-actions">
                 ${d.zona_resultados
                     ? `<button class="btn btn-secondary btn-sm" onclick="openZonaResultsModal(${d.id})">

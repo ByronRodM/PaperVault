@@ -2,7 +2,8 @@ fastapi
 uvicorn[standard]
 python-multipart
 sqlalchemy
-pytesseract
+paddlepaddle
+paddleocr
 Pillow
 opencv-python
 pdf2image
