@@ -1,12 +1,19 @@
+import os
 import json as _json
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
-DATABASE_URL = "sqlite:///./gestion_documental.db"
+load_dotenv()
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://papervault:papervault@localhost:5432/papervault",
+)
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -22,7 +29,7 @@ class Documento(Base):
     texto_extraido = Column(Text, default="")
     fecha_carga = Column(DateTime, default=datetime.now)
     idioma_ocr = Column(String(10), default="spa")
-    ocr_confianza = Column(Float, nullable=True)          # confianza promedio 0-1
+    ocr_confianza = Column(Float, nullable=True)
     # OCR por zonas — nulos si se procesó con OCR completo
     plantilla_ocr_id = Column(Integer, ForeignKey("plantillas_ocr.id"), nullable=True)
     zona_resultados_json = Column(Text, nullable=True)
@@ -63,8 +70,8 @@ class PlantillaOCR(Base):
     nombre = Column(String(255), nullable=False)
     descripcion = Column(Text, default="")
     ruta_imagen_ref = Column(String(500), nullable=False)
-    img_ancho = Column(Integer, nullable=False)   # dimensiones originales del
-    img_alto = Column(Integer, nullable=False)    # archivo de referencia
+    img_ancho = Column(Integer, nullable=False)
+    img_alto = Column(Integer, nullable=False)
     fecha_creacion = Column(DateTime, default=datetime.now)
 
     zonas = relationship(
@@ -121,21 +128,17 @@ class ZonaOCR(Base):
 def _migrate():
     """
     Aplica migraciones incrementales sobre tablas ya existentes.
-    SQLite soporta ALTER TABLE ... ADD COLUMN; si la columna ya existe
-    SQLite lanza un error que ignoramos silenciosamente.
+    PostgreSQL soporta ADD COLUMN IF NOT EXISTS (desde v9.6).
     """
     migraciones = [
-        "ALTER TABLE documentos ADD COLUMN plantilla_ocr_id INTEGER REFERENCES plantillas_ocr(id)",
-        "ALTER TABLE documentos ADD COLUMN zona_resultados_json TEXT",
-        "ALTER TABLE documentos ADD COLUMN ocr_confianza REAL",
+        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS plantilla_ocr_id INTEGER REFERENCES plantillas_ocr(id)",
+        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS zona_resultados_json TEXT",
+        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS ocr_confianza DOUBLE PRECISION",
     ]
     with engine.connect() as conn:
         for sql in migraciones:
-            try:
-                conn.execute(text(sql))
-                conn.commit()
-            except Exception:
-                pass  # La columna ya existe — no hay nada que hacer
+            conn.execute(text(sql))
+        conn.commit()
 
 
 def init_db():
