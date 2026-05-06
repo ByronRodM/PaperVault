@@ -1418,6 +1418,29 @@
                     <div id="activityList"></div>
                 </div>
 
+                <!-- Reportes por plantilla OCR -->
+                <div class="card" id="plantillaReportCard" style="display:none;">
+                    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+                        <div class="card-title" style="margin:0;"><i class="bi bi-layout-text-window-reverse"></i> Reporte por plantilla OCR</div>
+                        <select id="reportPlantillaSelect" class="form-control" style="width:auto; min-width:200px;" onchange="renderPlantillaReport()">
+                            <option value="">— Selecciona una plantilla —</option>
+                        </select>
+                    </div>
+
+                    <div id="plantillaReportContent" style="margin-top:1.25rem;"></div>
+                </div>
+
+                <!-- Gráfico de totales por mes -->
+                <div class="card" id="totalesMesCard" style="display:none;">
+                    <div class="card-title" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+                        <span><i class="bi bi-receipt"></i> Totales por mes (GTQ)</span>
+                        <div id="totalesResumen" style="display:flex; gap:1.5rem; flex-wrap:wrap;"></div>
+                    </div>
+                    <div class="chart-wrap" style="height:260px;">
+                        <canvas id="chartTotalesMes"></canvas>
+                    </div>
+                </div>
+
             </div><!-- /section-reports -->
 
             <!-- ══════════════════════════
@@ -2376,7 +2399,7 @@
                             <td><span class="badge ${badgeCls}">${d.tipo_archivo.slice(1)}</span></td>
                             <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
                             <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
-                            <td style="color:var(--text-muted);">${d.plantilla_nombre || d.idioma_ocr}</td>
+                            <td style="color:var(--text-muted);">${idiomaLabel(d.idioma_ocr)}</td>
                             <td>
                                 <div class="action-group">
                                     ${viewBtn}
@@ -2400,12 +2423,20 @@
                     <thead>
                         <tr>
                             <th>Nombre</th><th>Tipo</th><th>Tamaño</th>
-                            <th>Fecha de carga</th><th>Idioma OCR</th><th>Acciones</th>
+                            <th>Fecha de carga</th><th>Idioma</th><th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
                 </table>`;
         }
+    }
+
+    const IDIOMA_LABELS = {
+        spa: 'Español', eng: 'English', fra: 'Français',
+        deu: 'Deutsch', ita: 'Italiano', por: 'Português',
+    };
+    function idiomaLabel(code) {
+        return IDIOMA_LABELS[code] || (code || '—');
     }
 
     function zonaBadge(d) {
@@ -2559,6 +2590,178 @@
                 </tr>`).join('')}
                 </tbody></table>`;
         }
+
+        /* ── Reporte por plantilla ── */
+        const docsPorPlantilla = ALL_DOCS.filter(d => d.plantilla_ocr_id && d.zona_resultados);
+        const plantillaCard = document.getElementById('plantillaReportCard');
+        if (docsPorPlantilla.length > 0) {
+            plantillaCard.style.display = 'block';
+            const sel = document.getElementById('reportPlantillaSelect');
+            const plantillasUnicas = {};
+            docsPorPlantilla.forEach(d => {
+                if (!plantillasUnicas[d.plantilla_ocr_id])
+                    plantillasUnicas[d.plantilla_ocr_id] = d.plantilla_nombre || ('Plantilla ' + d.plantilla_ocr_id);
+            });
+            sel.innerHTML = '<option value="">— Selecciona una plantilla —</option>' +
+                Object.entries(plantillasUnicas).map(([id, nombre]) =>
+                    `<option value="${id}">${escHtml(nombre)}</option>`).join('');
+        }
+    }
+
+    // Abreviaturas de meses en español → índice 0-based
+    const MESES_ES = {
+        ene:0, feb:1, mar:2, abr:3, may:4, jun:5,
+        jul:6, ago:7, sep:8, oct:9, nov:10, dic:11,
+    };
+
+    /**
+     * Intenta parsear una fecha extraída por OCR.
+     * Formato esperado: "20-abr-2026 14:29:35" o "20-abr-2026".
+     * Retorna un objeto Date o null si no puede parsearse.
+     */
+    function parseFechaOCR(texto) {
+        const m = String(texto).match(/(\d{1,2})[\/\-\.]([a-záéíóú]{3})[\/\-\.](\d{4})/i);
+        if (!m) return null;
+        const mes = MESES_ES[m[2].toLowerCase()];
+        if (mes === undefined) return null;
+        return new Date(parseInt(m[3]), mes, parseInt(m[1]));
+    }
+
+    /** Clave "AAAA-MM" a partir de un Date. */
+    function clavesMes(fecha) {
+        return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    let _chartTotalesMes = null;
+
+    function renderPlantillaReport() {
+        const sel = document.getElementById('reportPlantillaSelect');
+        const pid = parseInt(sel.value);
+        const content = document.getElementById('plantillaReportContent');
+        const totalesCard = document.getElementById('totalesMesCard');
+
+        if (!pid) { content.innerHTML = ''; totalesCard.style.display = 'none'; return; }
+
+        const docs = ALL_DOCS.filter(d => d.plantilla_ocr_id === pid && d.zona_resultados);
+        if (docs.length === 0) {
+            content.innerHTML = '<p style="color:var(--text-muted);">No hay documentos con esta plantilla.</p>';
+            totalesCard.style.display = 'none';
+            return;
+        }
+
+        // Recopilar todos los campos únicos de esta plantilla
+        const campos = [];
+        const seenCampos = new Set();
+        docs[0].zona_resultados.forEach(z => {
+            if (!seenCampos.has(z.nombre_campo)) {
+                campos.push(z.nombre_campo);
+                seenCampos.add(z.nombre_campo);
+            }
+        });
+
+        // Tabla de valores
+        const thead = `<tr><th>Documento</th><th>Fecha</th>${campos.map(c => `<th>${escHtml(c)}</th>`).join('')}</tr>`;
+        const tbody = docs.map(d => {
+            const vals = {};
+            d.zona_resultados.forEach(z => { vals[z.nombre_campo] = z.texto_extraido; });
+            return `<tr>
+                <td style="font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    title="${escAttr(d.nombre_archivo)}">${escHtml(d.nombre_archivo)}</td>
+                <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
+                ${campos.map(c => `<td>${escHtml(vals[c] || '—')}</td>`).join('')}
+            </tr>`;
+        }).join('');
+        content.innerHTML = `<div style="overflow-x:auto;"><table class="tbl"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+
+        // Detectar campos que contienen "total" (case-insensitive)
+        const camposTotales = campos.filter(c => /total/i.test(c));
+        if (camposTotales.length === 0) { totalesCard.style.display = 'none'; return; }
+
+        // Parsear valor numérico: eliminar símbolos de moneda, comas, espacios
+        function parseNum(s) {
+            if (!s) return null;
+            const n = parseFloat(String(s).replace(/[Q$€£\s,]/g, '').replace(',', '.'));
+            return isNaN(n) ? null : n;
+        }
+
+        // Suma de totales por mes — usa la fecha del documento (zona "Fecha*")
+        // con fallback a la fecha de subida si no se puede parsear
+        const byMonth = {};
+        docs.forEach(d => {
+            const vals = {};
+            d.zona_resultados.forEach(z => { vals[z.nombre_campo] = z.texto_extraido; });
+
+            // Buscar campo de fecha en las zonas (cualquier campo cuyo nombre contenga "fecha")
+            const campoFecha = d.zona_resultados.find(z => /fecha/i.test(z.nombre_campo));
+            let key;
+            if (campoFecha) {
+                const fechaDoc = parseFechaOCR(campoFecha.texto_extraido);
+                key = fechaDoc ? clavesMes(fechaDoc) : null;
+            }
+            if (!key) {
+                // Fallback: fecha de subida (formato dd/mm/yyyy hh:mm:ss)
+                const parts = d.fecha_carga.split(/[/ :]/);
+                key = `${parts[2]}-${parts[1]}`;
+            }
+
+            let suma = 0;
+            camposTotales.forEach(c => {
+                const v = parseNum(vals[c]);
+                if (v !== null) suma += v;
+            });
+            byMonth[key] = (byMonth[key] || 0) + suma;
+        });
+
+        const meses = Object.keys(byMonth).sort();
+        const sumas = meses.map(k => byMonth[k]);
+
+        // ── Resúmenes numéricos ──
+        const totalGeneral = sumas.reduce((a, b) => a + b, 0);
+        const byYear = {};
+        meses.forEach((m, i) => {
+            const anio = m.split('-')[0];
+            byYear[anio] = (byYear[anio] || 0) + sumas[i];
+        });
+        const fmtQ = v => 'Q ' + v.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const resumenEl = document.getElementById('totalesResumen');
+        const anioActual = String(new Date().getFullYear());
+        const totalAnioActual = byYear[anioActual] || 0;
+        resumenEl.innerHTML = `
+            <div style="text-align:right;">
+                <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px;">${anioActual}</div>
+                <div style="font-size:1rem; font-weight:700; color:var(--text);">${fmtQ(totalAnioActual)}</div>
+            </div>` + `
+            <div style="text-align:right; padding-left:1rem; border-left:2px solid var(--accent);">
+                <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px;">Total general</div>
+                <div style="font-size:1.15rem; font-weight:800; color:var(--accent);">${fmtQ(totalGeneral)}</div>
+            </div>`;
+
+        totalesCard.style.display = 'block';
+        if (_chartTotalesMes) { _chartTotalesMes.destroy(); _chartTotalesMes = null; }
+        _chartTotalesMes = new Chart(document.getElementById('chartTotalesMes'), {
+            type: 'bar',
+            data: {
+                labels: meses,
+                datasets: [{
+                    label: 'Total (Q)',
+                    data: sumas,
+                    backgroundColor: 'rgba(16,185,129,0.75)',
+                    borderRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` Q ${ctx.parsed.y.toLocaleString('es-GT', {minimumFractionDigits:2})}` } },
+                    datalabels: false,
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => 'Q ' + v.toLocaleString('es-GT') } },
+                    x: { grid: { display: false } }
+                },
+            }
+        });
     }
 
     /* ═══════════════════════════════════════
