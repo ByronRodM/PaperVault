@@ -17,8 +17,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from database import init_db, get_db, Documento, PlantillaOCR, ZonaOCR, Usuario
-from ocr_engine import procesar_documento, procesar_por_zonas, verificar_paddle, FORMATOS_SOPORTADOS, FORMATOS_IMAGEN
+from core.database import init_db, get_db, Documento, PlantillaOCR, ZonaOCR, Usuario
+from core.ocr_engine import procesar_documento, procesar_por_zonas, verificar_paddle, FORMATOS_SOPORTADOS, FORMATOS_IMAGEN
 
 UPLOAD_DIR = "uploads"
 REFERENCIAS_DIR = os.path.join(UPLOAD_DIR, "referencias")
