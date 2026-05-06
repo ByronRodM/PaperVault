@@ -582,6 +582,38 @@
 
         .modal-overlay.open { display: flex; }
 
+        .modal-box {
+            background: #fff;
+            border-radius: 14px;
+            width: 92%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .modal-title { font-size: 0.97rem; font-weight: 700; color: #0f172a; }
+        .modal-close {
+            background: none; border: none; cursor: pointer;
+            font-size: 1.3rem; color: #94a3b8; line-height: 1;
+            border-radius: 6px; padding: 0.15rem 0.4rem;
+            transition: all 0.15s;
+        }
+        .modal-close:hover { background: #f1f5f9; color: #0f172a; }
+        .modal-body { padding: 1.5rem; }
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.6rem;
+        }
+
         .modal {
             background: white;
             border-radius: 16px;
@@ -1021,15 +1053,19 @@
                 <i class="bi bi-bar-chart-line"></i> Reportes
             </button>
 
+            {% if user_rol == 'admin' %}
             <button class="nav-item" data-sec="plantillas" onclick="navigate('plantillas')">
                 <i class="bi bi-layout-text-window-reverse"></i> Plantillas OCR
                 <span class="nav-badge" id="sidebarPlantillas">0</span>
             </button>
+            {% endif %}
 
+            {% if user_rol == 'admin' %}
             <div class="nav-section-label">Sistema</div>
             <button class="nav-item" data-sec="settings" onclick="navigate('settings')">
                 <i class="bi bi-gear"></i> Configuración
             </button>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
@@ -1058,13 +1094,6 @@
                 <div class="topbar-bread" id="topbarBread">PaperVault / Inicio</div>
             </div>
             <div class="topbar-right">
-                <button class="icon-btn" title="Notificaciones (próximamente)">
-                    <i class="bi bi-bell"></i>
-                </button>
-                <button class="icon-btn" title="Ayuda">
-                    <i class="bi bi-question-circle"></i>
-                </button>
-                <div style="width:1px; height:28px; background:var(--border);"></div>
                 <div style="font-size:0.82rem; color:var(--text-muted);">{{ user }}</div>
             </div>
         </header>
@@ -1402,22 +1431,17 @@
                         <i class="bi bi-hdd" style="font-size:1.05rem;"></i> Límite de almacenamiento
                     </div>
                     <p style="font-size:0.83rem; color:var(--text-muted); margin-bottom:1.25rem; line-height:1.6;">
-                        Establece un límite de referencia para visualizar el uso en el dashboard principal.
-                        Este valor es <em>solo ilustrativo</em> — no impone ningún límite real ni genera alertas.
+                        Límite de referencia para visualizar el uso en el dashboard.
+                        Solo ilustrativo — no impone ningún límite real.
                     </p>
-
                     <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
                         <input type="number" id="storageLimitInput" min="0.1" step="0.1"
                                placeholder="p. ej. 5"
                                style="width:110px; padding:0.55rem 0.75rem; border:1px solid var(--border);
-                                      border-radius:7px; background:var(--bg); color:var(--text);
-                                      font-size:0.9rem;">
+                                      border-radius:7px; background:var(--bg); color:var(--text); font-size:0.9rem;">
                         <span style="font-size:0.9rem; color:var(--text-muted); font-weight:600;">GB</span>
-                        <button class="btn btn-primary btn-sm" onclick="saveStorageLimit()" style="padding:0.5rem 1.1rem;">
-                            Guardar
-                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="saveStorageLimit()" style="padding:0.5rem 1.1rem;">Guardar</button>
                     </div>
-
                     <div id="storageLimitFeedback" style="display:none; margin-top:0.85rem; font-size:0.81rem;
                          color:#166534; background:#f0fdf4; border:1px solid #bbf7d0;
                          border-radius:7px; padding:0.5rem 0.85rem; align-items:center; gap:0.4rem;">
@@ -1425,16 +1449,76 @@
                     </div>
                 </div>
 
-                <!-- Próximamente -->
-                <div class="card" style="max-width:520px;">
-                    <div class="card-title"><i class="bi bi-tools"></i> Más opciones</div>
-                    <div style="padding:1.5rem; background:var(--bg); border-radius:10px;
-                                text-align:center; color:var(--text-muted); font-size:0.83rem;">
-                        Gestión de usuarios e idiomas OCR por defecto — disponibles en versiones futuras.
+                <!-- Gestión de usuarios -->
+                <div class="card">
+                    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+                        <div class="card-title" style="margin:0;"><i class="bi bi-people"></i> Usuarios</div>
+                        <button class="btn btn-primary btn-sm" onclick="abrirModalNuevoUsuario()">
+                            <i class="bi bi-person-plus"></i> Nuevo usuario
+                        </button>
+                    </div>
+
+                    <div id="usuariosContainer" style="margin-top:1rem;">
+                        <div class="empty"><i class="bi bi-people"></i><p>Cargando usuarios…</p></div>
                     </div>
                 </div>
 
             </div><!-- /section-settings -->
+
+            <!-- Modal nuevo usuario -->
+            <div class="modal-overlay" id="modalNuevoUsuario" style="display:none;" onclick="if(event.target===this)cerrarModalNuevoUsuario()">
+                <div class="modal-box" style="max-width:400px;">
+                    <div class="modal-header">
+                        <span class="modal-title"><i class="bi bi-person-plus"></i> Nuevo usuario</span>
+                        <button class="modal-close" onclick="cerrarModalNuevoUsuario()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom:1rem;">
+                            <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:0.4rem;">Nombre de usuario</label>
+                            <input type="text" id="nuevoNombreUsuario" class="form-control"
+                                   placeholder="ej. juan.perez" style="width:100%;">
+                        </div>
+                        <div style="margin-bottom:1.25rem;">
+                            <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:0.4rem;">Rol</label>
+                            <select id="nuevoRolUsuario" class="form-control" style="width:100%;">
+                                <option value="usuario">Usuario</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                        <p style="font-size:0.78rem; color:var(--text-muted); line-height:1.5;">
+                            Se generará una contraseña temporal que se mostrará <strong>una sola vez</strong>.
+                            El usuario deberá cambiarla en su primer inicio de sesión.
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cerrarModalNuevoUsuario()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="crearUsuario()">Crear usuario</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal contraseña temporal -->
+            <div class="modal-overlay" id="modalPasswordTemporal" style="display:none;">
+                <div class="modal-box" style="max-width:400px;">
+                    <div class="modal-header">
+                        <span class="modal-title"><i class="bi bi-key"></i> Credenciales temporales</span>
+                        <button class="modal-close" onclick="document.getElementById('modalPasswordTemporal').style.display='none'">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="font-size:0.84rem; margin-bottom:1rem; color:var(--text-muted); line-height:1.5;">
+                            Comparte estas credenciales con el usuario. La contraseña
+                            <strong>no volverá a mostrarse</strong>.
+                        </p>
+                        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:monospace; font-size:0.88rem;">
+                            <div style="margin-bottom:0.5rem;">Usuario: <strong id="tmpUser"></strong></div>
+                            <div>Contraseña: <strong id="tmpPass"></strong></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" onclick="document.getElementById('modalPasswordTemporal').style.display='none'">Entendido</button>
+                    </div>
+                </div>
+            </div>
 
             <!-- ══════════════════════════
                  SECCIÓN: PLANTILLAS OCR
@@ -1667,8 +1751,11 @@
     function navigate(sec) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.getElementById('section-' + sec).classList.add('active');
-        document.querySelector(`[data-sec="${sec}"]`).classList.add('active');
+        const secEl = document.getElementById('section-' + sec);
+        if (!secEl) return;                                      // sección no existe para este rol
+        secEl.classList.add('active');
+        const navBtn = document.querySelector(`[data-sec="${sec}"]`);
+        if (navBtn) navBtn.classList.add('active');             // puede no existir para no-admin
 
         const meta = SECTION_META[sec] || { title: sec, bread: 'PaperVault / ' + sec };
         document.getElementById('topbarTitle').textContent = meta.title;
@@ -1676,6 +1763,7 @@
 
         if (sec === 'reports' && !chartsInit) { initCharts(); chartsInit = true; }
         if (sec === 'explorer') renderExplorer();
+        if (sec === 'settings') cargarUsuarios();
 
         window.location.hash = sec;
     }
@@ -1793,6 +1881,111 @@
     }
 
     updateStorageDisplay();  // mostrar al cargar
+
+    /* ═══════════════════════════════════════
+       GESTIÓN DE USUARIOS (solo admin)
+    ═══════════════════════════════════════ */
+    const USER_ROL = {{ user_rol | tojson }};
+
+    async function cargarUsuarios() {
+        if (USER_ROL !== 'admin') return;
+        const resp = await fetch('/api/usuarios');
+        if (!resp.ok) return;
+        const usuarios = await resp.json();
+        const c = document.getElementById('usuariosContainer');
+        if (!c) return;
+        if (!usuarios.length) {
+            c.innerHTML = '<div class="empty"><p>No hay usuarios registrados.</p></div>';
+            return;
+        }
+        const rolBadge = r => r === 'admin'
+            ? `<span style="font-size:0.72rem;font-weight:700;background:#eef2ff;color:var(--accent);padding:0.1rem 0.4rem;border-radius:4px;">ADMIN</span>`
+            : `<span style="font-size:0.72rem;font-weight:700;background:#f1f5f9;color:#64748b;padding:0.1rem 0.4rem;border-radius:4px;">USUARIO</span>`;
+        const filas = usuarios.map(u => `
+            <tr>
+                <td style="font-weight:500;">${escHtml(u.nombre_usuario)}</td>
+                <td>${rolBadge(u.rol)}</td>
+                <td style="color:var(--text-muted);">${u.fecha_creacion}</td>
+                <td>
+                    ${u.primer_login ? `<span style="font-size:0.72rem;color:#d97706;font-weight:600;">Pendiente cambio</span>` : `<span style="font-size:0.72rem;color:#16a34a;">Activo</span>`}
+                </td>
+                <td>
+                    <div class="action-group">
+                        <button class="btn btn-secondary btn-sm" onclick="resetearPassword(${u.id},'${escAttr(u.nombre_usuario)}')">
+                            <i class="bi bi-key"></i> Reset
+                        </button>
+                        ${u.nombre_usuario !== 'admin' ? `
+                        <button class="btn btn-danger btn-sm" onclick="eliminarUsuario(${u.id},'${escAttr(u.nombre_usuario)}')">
+                            <i class="bi bi-trash3"></i>
+                        </button>` : ''}
+                    </div>
+                </td>
+            </tr>`).join('');
+        c.innerHTML = `
+            <table class="tbl">
+                <thead>
+                    <tr><th>Usuario</th><th>Rol</th><th>Creado</th><th>Estado</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>`;
+    }
+
+    function abrirModalNuevoUsuario() {
+        document.getElementById('nuevoNombreUsuario').value = '';
+        document.getElementById('nuevoRolUsuario').value = 'usuario';
+        document.getElementById('modalNuevoUsuario').style.display = 'flex';
+        setTimeout(() => document.getElementById('nuevoNombreUsuario').focus(), 100);
+    }
+
+    function cerrarModalNuevoUsuario() {
+        document.getElementById('modalNuevoUsuario').style.display = 'none';
+    }
+
+    async function crearUsuario() {
+        const nombre = document.getElementById('nuevoNombreUsuario').value.trim();
+        const rol    = document.getElementById('nuevoRolUsuario').value;
+        if (!nombre) { alert('Ingresa un nombre de usuario.'); return; }
+
+        const fd = new FormData();
+        fd.append('nombre_usuario', nombre);
+        fd.append('rol', rol);
+
+        const resp = await fetch('/api/usuarios', { method: 'POST', body: fd });
+        if (!resp.ok) {
+            const err = await resp.json();
+            alert('Error: ' + (err.detail || 'No se pudo crear el usuario'));
+            return;
+        }
+        const data = await resp.json();
+        cerrarModalNuevoUsuario();
+
+        document.getElementById('tmpUser').textContent = data.nombre_usuario;
+        document.getElementById('tmpPass').textContent = data.password_inicial;
+        document.getElementById('modalPasswordTemporal').style.display = 'flex';
+        cargarUsuarios();
+    }
+
+    async function eliminarUsuario(id, nombre) {
+        if (!confirm(`¿Eliminar al usuario "${nombre}"? Esta acción no se puede deshacer.`)) return;
+        const resp = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' });
+        if (resp.ok) {
+            cargarUsuarios();
+        } else {
+            const err = await resp.json();
+            alert('Error: ' + (err.detail || 'No se pudo eliminar'));
+        }
+    }
+
+    async function resetearPassword(id, nombre) {
+        if (!confirm(`¿Resetear la contraseña de "${nombre}"? Se generará una contraseña temporal.`)) return;
+        const resp = await fetch(`/api/usuarios/${id}/reset`, { method: 'POST' });
+        if (!resp.ok) { alert('Error al resetear contraseña.'); return; }
+        const data = await resp.json();
+        document.getElementById('tmpUser').textContent = nombre;
+        document.getElementById('tmpPass').textContent = data.password_temporal;
+        document.getElementById('modalPasswordTemporal').style.display = 'flex';
+        cargarUsuarios();
+    }
 
     /* Restaurar sección desde hash */
     (function () {

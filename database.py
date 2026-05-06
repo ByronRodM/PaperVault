@@ -2,7 +2,7 @@ import os
 import json as _json
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
@@ -122,6 +122,29 @@ class ZonaOCR(Base):
             "ancho": self.ancho,
             "alto": self.alto,
             "orden": self.orden,
+        }
+
+
+class Usuario(Base):
+    """Usuarios del sistema con roles y control de primer inicio de sesión."""
+    __tablename__ = "usuarios"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_usuario = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    rol = Column(String(20), default="usuario", nullable=False)  # "admin" | "usuario"
+    activo = Column(Boolean, default=True, nullable=False)
+    primer_login = Column(Boolean, default=True, nullable=False)
+    fecha_creacion = Column(DateTime, default=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nombre_usuario": self.nombre_usuario,
+            "rol": self.rol,
+            "activo": self.activo,
+            "primer_login": self.primer_login,
+            "fecha_creacion": self.fecha_creacion.strftime("%d/%m/%Y %H:%M"),
         }
 
 

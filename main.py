@@ -1,5 +1,7 @@
+import hashlib
 import json
 import os
+import secrets
 import shutil
 import uuid
 from datetime import datetime
@@ -15,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from database import init_db, get_db, Documento, PlantillaOCR, ZonaOCR
+from database import init_db, get_db, Documento, PlantillaOCR, ZonaOCR, Usuario
 from ocr_engine import procesar_documento, procesar_por_zonas, verificar_paddle, FORMATOS_SOPORTADOS, FORMATOS_IMAGEN
 
 UPLOAD_DIR = "uploads"
@@ -27,13 +29,25 @@ os.makedirs(TMP_DIR, exist_ok=True)
 os.makedirs("static", exist_ok=True)
 
 # Cache en memoria: temp_key → {resultados, archivo_nombre, idioma, plantilla_id}
-# Se limpia al confirmar o cancelar. Aceptable para un prototipo.
 _preview_cache: dict = {}
 
-# Usuarios para el prototipo — en producción usar base de datos con hashes
-USERS = {
-    "admin": "admin123",
-}
+
+# ── Utilidades de contraseñas ──────────────────────────────
+
+def _hashear(password: str) -> str:
+    """PBKDF2-SHA256 con salt aleatorio. Formato: salt_hex:key_hex"""
+    salt = secrets.token_hex(32)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000).hex()
+    return f"{salt}:{key}"
+
+
+def _verificar(password: str, stored: str) -> bool:
+    try:
+        salt, key = stored.split(":", 1)
+        nuevo = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000).hex()
+        return secrets.compare_digest(nuevo, key)
+    except Exception:
+        return False
 
 app = FastAPI(
     title="PaperVault — Sistema de Gestión Documental",
@@ -62,16 +76,46 @@ class ZonasPayload(BaseModel):
     zonas: List[ZonaIn]
 
 
-# ── Helpers ───────────────────────────────────────────────
+# ── Helpers de sesión ─────────────────────────────────────
 
 def get_user(request: Request) -> Optional[str]:
     return request.session.get("user")
+
+def get_rol(request: Request) -> Optional[str]:
+    return request.session.get("rol")
+
+def require_admin(request: Request):
+    if not get_user(request):
+        raise HTTPException(status_code=302, headers={"Location": "/login"})
+    if get_rol(request) != "admin":
+        raise HTTPException(status_code=403, detail="Se requiere rol de administrador.")
 
 
 @app.on_event("startup")
 def startup():
     init_db()
     print("Base de datos inicializada.")
+    db = next(get_db())
+    try:
+        if db.query(Usuario).count() == 0:
+            password_inicial = secrets.token_urlsafe(10)
+            admin = Usuario(
+                nombre_usuario="admin",
+                password_hash=_hashear(password_inicial),
+                rol="admin",
+                primer_login=True,
+            )
+            db.add(admin)
+            db.commit()
+            linea = "=" * 52
+            print(f"\n{linea}")
+            print("  PRIMER INICIO — Credenciales de administrador")
+            print(f"  Usuario   : admin")
+            print(f"  Contraseña: {password_inicial}")
+            print(f"  Se pedirá cambiar la contraseña al ingresar.")
+            print(f"{linea}\n")
+    finally:
+        db.close()
     if verificar_paddle():
         print("Motor OCR (PaddleOCR) listo.")
     else:
@@ -92,21 +136,128 @@ async def hacer_login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    db: Session = Depends(get_db),
 ):
-    if USERS.get(username) == password:
-        request.session["user"] = username
-        return RedirectResponse(url="/", status_code=303)
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": "Usuario o contraseña incorrectos. Intenta de nuevo."},
-        status_code=401,
-    )
+    usuario = db.query(Usuario).filter(
+        Usuario.nombre_usuario == username,
+        Usuario.activo == True,
+    ).first()
+    if not usuario or not _verificar(password, usuario.password_hash):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Usuario o contraseña incorrectos."},
+            status_code=401,
+        )
+    request.session["user"] = usuario.nombre_usuario
+    request.session["rol"]  = usuario.rol
+    if usuario.primer_login:
+        return RedirectResponse(url="/cambiar-password", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/logout")
 def hacer_logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=302)
+
+
+@app.get("/cambiar-password", response_class=HTMLResponse)
+def cambiar_password_get(request: Request):
+    if not get_user(request):
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("cambiar_password.html", {"request": request, "error": None})
+
+
+@app.post("/cambiar-password")
+async def cambiar_password_post(
+    request: Request,
+    password_nuevo: str = Form(...),
+    password_confirmar: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if password_nuevo != password_confirmar:
+        return templates.TemplateResponse(
+            "cambiar_password.html",
+            {"request": request, "error": "Las contraseñas no coinciden."},
+            status_code=400,
+        )
+    if len(password_nuevo) < 8:
+        return templates.TemplateResponse(
+            "cambiar_password.html",
+            {"request": request, "error": "La contraseña debe tener al menos 8 caracteres."},
+            status_code=400,
+        )
+    usuario = db.query(Usuario).filter(Usuario.nombre_usuario == user).first()
+    if not usuario:
+        return RedirectResponse(url="/login", status_code=302)
+    usuario.password_hash = _hashear(password_nuevo)
+    usuario.primer_login = False
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+# ── API: Gestión de usuarios (solo admin) ─────────────────
+
+@app.get("/api/usuarios")
+def listar_usuarios(request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+    return [u.to_dict() for u in db.query(Usuario).order_by(Usuario.fecha_creacion).all()]
+
+
+@app.post("/api/usuarios")
+async def crear_usuario(
+    request: Request,
+    nombre_usuario: str = Form(...),
+    rol: str = Form(default="usuario"),
+    db: Session = Depends(get_db),
+):
+    require_admin(request)
+    if db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first():
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe.")
+    if rol not in ("admin", "usuario"):
+        raise HTTPException(status_code=400, detail="Rol inválido.")
+    password_inicial = secrets.token_urlsafe(10)
+    nuevo = Usuario(
+        nombre_usuario=nombre_usuario,
+        password_hash=_hashear(password_inicial),
+        rol=rol,
+        primer_login=True,
+    )
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    data = nuevo.to_dict()
+    data["password_inicial"] = password_inicial   # solo se devuelve una vez
+    return data
+
+
+@app.delete("/api/usuarios/{usuario_id}")
+def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(get_db)):
+    require_admin(request)
+    u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    if u.nombre_usuario == "admin":
+        raise HTTPException(status_code=400, detail="No se puede eliminar al administrador principal.")
+    db.delete(u)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/usuarios/{usuario_id}/reset")
+def resetear_password(request: Request, usuario_id: int, db: Session = Depends(get_db)):
+    require_admin(request)
+    u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    nueva = secrets.token_urlsafe(10)
+    u.password_hash = _hashear(nueva)
+    u.primer_login = True
+    db.commit()
+    return {"password_temporal": nueva}
 
 
 # ── Página principal (Dashboard) ──────────────────────────
@@ -135,6 +286,7 @@ def pagina_principal(request: Request, db: Session = Depends(get_db)):
             "documentos_json": documentos_json,
             "plantillas_json": plantillas_json,
             "user": user,
+            "user_rol": get_rol(request),
             "stats": {
                 "total": total,
                 "pdfs": total_pdf,
@@ -272,8 +424,7 @@ async def crear_plantilla(
     imagen_ref: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
-        raise HTTPException(status_code=401, detail="No autenticado")
+    require_admin(request)
 
     extension = os.path.splitext(imagen_ref.filename)[1].lower()
     if extension not in FORMATOS_IMAGEN:
@@ -307,8 +458,7 @@ async def crear_plantilla(
 
 @app.delete("/api/plantillas/{plantilla_id}")
 def eliminar_plantilla(plantilla_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
-        raise HTTPException(status_code=401, detail="No autenticado")
+    require_admin(request)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -330,8 +480,7 @@ def guardar_zonas(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
-        raise HTTPException(status_code=401, detail="No autenticado")
+    require_admin(request)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
