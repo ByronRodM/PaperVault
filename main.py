@@ -677,6 +677,7 @@ async def preview_zonas(
 async def confirmar_zona(
     request: Request,
     temp_key: str = Form(...),
+    resultados_editados: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
     if not get_user(request):
@@ -701,7 +702,18 @@ async def confirmar_zona(
     shutil.move(ruta_tmp, ruta_destino)
     tamano_mb = os.path.getsize(ruta_destino) / (1024 * 1024)
 
-    resultados = cache["resultados"]
+    resultados = [dict(r) for r in cache["resultados"]]
+
+    if resultados_editados:
+        try:
+            edits = json.loads(resultados_editados)
+            for edit in edits:
+                idx = edit.get("idx")
+                if isinstance(idx, int) and 0 <= idx < len(resultados):
+                    resultados[idx]["texto_extraido"] = str(edit.get("texto_extraido", ""))
+        except Exception:
+            pass  # Si falla el parseo se conservan los resultados originales
+
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
     )

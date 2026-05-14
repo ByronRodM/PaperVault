@@ -1090,6 +1090,30 @@
         .result-field-name { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 0.3rem; }
         .result-field-val { font-size: 0.9rem; color: var(--text); font-family: 'Consolas', monospace; background: #f8fafc; padding: 0.4rem 0.6rem; border-radius: 6px; white-space: pre-wrap; }
 
+        .result-field-edit {
+            width: 100%;
+            font-size: 0.9rem;
+            font-family: 'Consolas', monospace;
+            color: var(--text);
+            background: #f8fafc;
+            border: 1.5px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            resize: none;
+            overflow: hidden;
+            line-height: 1.55;
+            min-height: 2.4rem;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+            box-sizing: border-box;
+        }
+
+        .result-field-edit:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+            background: #fff;
+        }
+
         /* ══════════════════════════════
            FILTERS ROW
         ══════════════════════════════ */
@@ -1890,6 +1914,7 @@
     };
 
     let chartsInit = false;
+    let _chartByType = null, _chartByMonth = null;
     let explorerView = 'list';
 
     function navigate(sec) {
@@ -1905,7 +1930,7 @@
         document.getElementById('topbarTitle').textContent = meta.title;
         document.getElementById('topbarBread').textContent = meta.bread;
 
-        if (sec === 'reports' && !chartsInit) { initCharts(); chartsInit = true; }
+        if (sec === 'reports') { initCharts(); chartsInit = true; }
         if (sec === 'explorer') renderExplorer();
         if (sec === 'settings') cargarUsuarios();
 
@@ -2276,24 +2301,44 @@
         document.getElementById('zonePreviewTitle').textContent =
             data.plantilla_nombre + ' — ' + data.archivo_nombre;
 
-        document.getElementById('zonePreviewBody').innerHTML =
-            data.resultados.map(r => `
+        const body = document.getElementById('zonePreviewBody');
+        body.innerHTML = data.resultados.map((r, i) => `
             <div class="result-field">
                 <div class="result-field-name">${escHtml(r.nombre_campo)}</div>
-                <div class="result-field-val">${escHtml(r.texto_extraido) || '<span style="color:#94a3b8;">(sin texto detectado)</span>'}</div>
+                <textarea class="result-field-edit" data-idx="${i}" rows="1" spellcheck="false"></textarea>
             </div>`).join('');
+
+        // Asignar valores vía .value para evitar problemas con caracteres especiales
+        data.resultados.forEach((r, i) => {
+            const ta = body.querySelector(`.result-field-edit[data-idx="${i}"]`);
+            ta.value = r.texto_extraido || '';
+            _autoResize(ta);
+            ta.addEventListener('input', () => _autoResize(ta));
+        });
 
         document.getElementById('zonePreviewWrap').style.display = 'block';
         document.getElementById('zonePreviewWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    function _autoResize(ta) {
+        ta.style.height = 'auto';
+        ta.style.height = ta.scrollHeight + 'px';
+    }
+
     async function confirmarGuardado() {
         if (!_currentTempKey) return;
+
+        // Recoger textos editados de las textareas del preview
+        const editados = Array.from(
+            document.querySelectorAll('#zonePreviewBody .result-field-edit')
+        ).map(ta => ({ idx: parseInt(ta.dataset.idx), texto_extraido: ta.value }));
+
         document.getElementById('btnConfirmar').disabled = true;
         document.getElementById('confirmLoading').classList.add('active');
 
         const fd = new FormData();
         fd.append('temp_key', _currentTempKey);
+        fd.append('resultados_editados', JSON.stringify(editados));
 
         try {
             const resp = await fetch('/api/plantillas/confirmar', { method: 'POST', body: fd });
@@ -2306,16 +2351,17 @@
 
             // Agregar a ALL_DOCS y actualizar home + explorador
             ALL_DOCS.unshift({
-                id:              doc.id,
-                nombre_archivo:  doc.nombre_archivo,
-                tipo_archivo:    doc.tipo_archivo,
-                tamano_mb:       doc.tamano_mb,
-                texto_extraido:  doc.texto_extraido,
-                fecha_carga:     doc.fecha_carga,
-                idioma_ocr:      doc.idioma_ocr,
-                ocr_confianza:   doc.ocr_confianza,
+                id:               doc.id,
+                nombre_archivo:   doc.nombre_archivo,
+                tipo_archivo:     doc.tipo_archivo,
+                tamano_mb:        doc.tamano_mb,
+                texto_extraido:   doc.texto_extraido,
+                fecha_carga:      doc.fecha_carga,
+                idioma_ocr:       doc.idioma_ocr,
+                ocr_confianza:    doc.ocr_confianza,
+                plantilla_ocr_id: doc.plantilla_ocr_id,
                 plantilla_nombre: doc.plantilla_nombre,
-                zona_resultados: doc.zona_resultados,
+                zona_resultados:  doc.zona_resultados,
             });
             document.getElementById('sidebarCount').textContent = ALL_DOCS.length;
             renderHomeDocs();   // actualizar tabla del home
@@ -2330,6 +2376,7 @@
 
             _currentTempKey = null;
             document.getElementById('zonePreviewWrap').style.display = 'none';
+            if (chartsInit) initCharts();
 
             // Mostrar confirmación de guardado
             document.getElementById('zoneResultsBody').innerHTML = `
@@ -2616,6 +2663,9 @@
        REPORTES / CHARTS
     ═══════════════════════════════════════ */
     function initCharts() {
+        if (_chartByType)  { _chartByType.destroy();  _chartByType  = null; }
+        if (_chartByMonth) { _chartByMonth.destroy(); _chartByMonth = null; }
+
         /* Stats dinámicas */
         const totalChars = ALL_DOCS.reduce((s, d) => s + (d.texto_extraido || '').length, 0);
         document.getElementById('rChars').textContent = totalChars.toLocaleString('es');
@@ -2635,7 +2685,7 @@
         const typeCounts = typeLabels.map(k => byType[k]);
         const palette = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
 
-        new Chart(document.getElementById('chartByType'), {
+        _chartByType = new Chart(document.getElementById('chartByType'), {
             type: 'doughnut',
             data: {
                 labels: typeLabels.map(l => l.slice(1).toUpperCase()),
@@ -2657,7 +2707,7 @@
         const monthKeys   = Object.keys(byMonth).sort();
         const monthCounts = monthKeys.map(k => byMonth[k]);
 
-        new Chart(document.getElementById('chartByMonth'), {
+        _chartByMonth = new Chart(document.getElementById('chartByMonth'), {
             type: 'bar',
             data: {
                 labels: monthKeys,
