@@ -382,6 +382,33 @@ def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depe
     )
 
 
+@app.get("/ver/{doc_id}")
+def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(get_db)):
+    if not get_user(request):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    documento = db.query(Documento).filter(Documento.id == doc_id).first()
+    if not documento:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    if not os.path.exists(documento.ruta_archivo):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    ext = documento.tipo_archivo.lower()
+    media_type_map = {
+        ".pdf":  "application/pdf",
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".tiff": "image/tiff",
+        ".tif":  "image/tiff",
+        ".bmp":  "image/bmp",
+    }
+    media_type = media_type_map.get(ext, "application/octet-stream")
+    return FileResponse(
+        path=documento.ruta_archivo,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{documento.nombre_archivo}"'},
+    )
+
+
 # ── Documentos: eliminar ──────────────────────────────────
 
 @app.delete("/eliminar/{doc_id}")
