@@ -10,7 +10,7 @@ FORMATOS_IMAGEN = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp"}
 FORMATOS_PDF = {".pdf"}
 FORMATOS_SOPORTADOS = FORMATOS_IMAGEN | FORMATOS_PDF
 
-# Mapeo de códigos Tesseract → PaddleOCR 3.x
+# Mapeo de códigos de idioma → PaddleOCR 3.x
 # 'latin' fue eliminado en v3; los idiomas de escritura latina usan 'en'
 LANG_MAP = {
     "spa": "en",
