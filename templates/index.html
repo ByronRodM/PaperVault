@@ -1898,6 +1898,11 @@
 <!-- DATA para JavaScript -->
 <script>
     const ALL_DOCS = {{ documentos_json | safe }};
+    const USER_ROL = {{ user_rol | tojson }};
+    const IDIOMA_LABELS = {
+        spa: 'Español', eng: 'English', fra: 'Français',
+        deu: 'Deutsch', ita: 'Italiano', por: 'Português',
+    };
 </script>
 
 <script>
@@ -1972,15 +1977,14 @@
                 <td><span class="badge ${badgeCls}">${ext}</span></td>
                 <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
                 <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
+                <td style="color:var(--text-muted);">${escHtml(d.subido_por || '—')}</td>
                 <td>
                     <div class="action-group">
                         ${viewBtn}
                         <button class="btn btn-success btn-sm" onclick="openDocViewer(${d.id}, '${escAttr(d.nombre_archivo)}', '${d.tipo_archivo}')">
                             <i class="bi bi-eye-fill"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                            <i class="bi bi-trash3"></i>
-                        </button>
+                        ${USER_ROL === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')"><i class="bi bi-trash3"></i></button>` : ''}
                     </div>
                 </td>
             </tr>`;
@@ -1991,7 +1995,7 @@
                 <thead>
                     <tr>
                         <th>Nombre</th><th>Tipo</th><th>Tamaño</th>
-                        <th>Fecha de carga</th><th>Acciones</th>
+                        <th>Fecha de carga</th><th>Escaneado por</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -2056,7 +2060,6 @@
     /* ═══════════════════════════════════════
        GESTIÓN DE USUARIOS (solo admin)
     ═══════════════════════════════════════ */
-    const USER_ROL = {{ user_rol | tojson }};
 
     async function cargarUsuarios() {
         if (USER_ROL !== 'admin') return;
@@ -2475,9 +2478,7 @@
                         <button class="btn btn-success btn-sm" onclick="openDocViewer(${d.id}, '${escAttr(d.nombre_archivo)}', '${d.tipo_archivo}')">
                             <i class="bi bi-eye-fill"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                            <i class="bi bi-trash3"></i>
-                        </button>
+                        ${USER_ROL === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')"><i class="bi bi-trash3"></i></button>` : ''}
                     </div>
                 </td>
             </tr>`;
@@ -2572,16 +2573,14 @@
                             <td style="color:var(--text-muted);">${d.tamano_mb} MB</td>
                             <td style="color:var(--text-muted); white-space:nowrap;">${d.fecha_carga}</td>
                             <td style="color:var(--text-muted);">${idiomaLabel(d.idioma_ocr)}</td>
+                            <td style="color:var(--text-muted);">${escHtml(d.subido_por || '—')}</td>
                             <td>
                                 <div class="action-group">
                                     ${viewBtn}
                                     <button class="btn btn-success btn-sm" onclick="openDocViewer(${d.id}, '${escAttr(d.nombre_archivo)}', '${d.tipo_archivo}')">
                                         <i class="bi bi-eye-fill"></i> Ver
                                     </button>
-                                    <button class="btn btn-danger btn-sm"
-                                            onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                                        <i class="bi bi-trash3"></i>
-                                    </button>
+                                    ${USER_ROL === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')"><i class="bi bi-trash3"></i></button>` : ''}
                                 </div>
                             </td>
                         </tr>`;
@@ -2592,7 +2591,7 @@
                     <thead>
                         <tr>
                             <th>Nombre</th><th>Tipo</th><th>Tamaño</th>
-                            <th>Fecha de carga</th><th>Idioma</th><th>Acciones</th>
+                            <th>Fecha de carga</th><th>Idioma</th><th>Escaneado por</th><th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -2600,10 +2599,6 @@
         }
     }
 
-    const IDIOMA_LABELS = {
-        spa: 'Español', eng: 'English', fra: 'Français',
-        deu: 'Deutsch', ita: 'Italiano', por: 'Português',
-    };
     function idiomaLabel(code) {
         return IDIOMA_LABELS[code] || (code || '—');
     }
@@ -2651,10 +2646,7 @@
                 <button class="btn btn-success btn-sm" onclick="openDocViewer(${d.id}, '${escAttr(d.nombre_archivo)}', '${d.tipo_archivo}')">
                     <i class="bi bi-eye-fill"></i>
                 </button>
-                <button class="btn btn-danger btn-sm"
-                        onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')">
-                    <i class="bi bi-trash3"></i>
-                </button>
+                ${USER_ROL === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id}, '${escAttr(d.nombre_archivo)}')"><i class="bi bi-trash3"></i></button>` : ''}
             </div>
         </div>`;
     }
@@ -3160,7 +3152,7 @@
     function renderPlantillas() {
         const grid = document.getElementById('plantillasGrid');
         const badge = document.getElementById('sidebarPlantillas');
-        badge.textContent = ALL_PLANTILLAS.length;
+        if (badge) badge.textContent = ALL_PLANTILLAS.length;
 
         if (ALL_PLANTILLAS.length === 0) {
             grid.innerHTML = `

@@ -339,6 +339,7 @@ async def subir_documento(
         texto_extraido=texto,
         idioma_ocr=idioma,
         ocr_confianza=confianza,
+        subido_por=get_user(request),
     )
     db.add(documento)
     db.commit()
@@ -413,8 +414,7 @@ def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(ge
 
 @app.delete("/eliminar/{doc_id}")
 def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
-        raise HTTPException(status_code=401, detail="No autenticado")
+    require_admin(request)
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
@@ -597,6 +597,7 @@ async def procesar_con_zonas(
         ocr_confianza=confianza_zonas,
         plantilla_ocr_id=plantilla_id,
         zona_resultados_json=json.dumps(resultados, ensure_ascii=False),
+        subido_por=get_user(request),
     )
     db.add(documento)
     db.commit()
@@ -730,6 +731,7 @@ async def confirmar_zona(
         ocr_confianza=confianza_zonas,
         plantilla_ocr_id=cache["plantilla_id"],
         zona_resultados_json=json.dumps(resultados, ensure_ascii=False),
+        subido_por=get_user(request),
     )
     db.add(documento)
     db.commit()

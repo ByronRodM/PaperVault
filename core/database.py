@@ -33,6 +33,7 @@ class Documento(Base):
     # OCR por zonas — nulos si se procesó con OCR completo
     plantilla_ocr_id = Column(Integer, ForeignKey("plantillas_ocr.id"), nullable=True)
     zona_resultados_json = Column(Text, nullable=True)
+    subido_por = Column(String(50), nullable=True)
 
     plantilla_ocr = relationship("PlantillaOCR", foreign_keys=[plantilla_ocr_id])
 
@@ -55,6 +56,7 @@ class Documento(Base):
             "plantilla_ocr_id": self.plantilla_ocr_id,
             "plantilla_nombre": self.plantilla_ocr.nombre if self.plantilla_ocr else None,
             "zona_resultados": zonas,
+            "subido_por": self.subido_por,
         }
 
 
@@ -157,6 +159,7 @@ def _migrate():
         "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS plantilla_ocr_id INTEGER REFERENCES plantillas_ocr(id)",
         "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS zona_resultados_json TEXT",
         "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS ocr_confianza DOUBLE PRECISION",
+        "ALTER TABLE documentos ADD COLUMN IF NOT EXISTS subido_por VARCHAR(50)",
     ]
     with engine.connect() as conn:
         for sql in migraciones:
