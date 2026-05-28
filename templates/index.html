@@ -555,6 +555,31 @@
 
         .loading-row.active { display: flex; }
 
+        .upload-mode-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+        .mode-tab {
+            padding: 0.5rem 1.2rem;
+            border: none;
+            background: transparent;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color 0.18s, border-color 0.18s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .mode-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .mode-tab:hover:not(.active) { color: var(--text); }
+
         .spinner {
             width: 18px;
             height: 18px;
@@ -1303,10 +1328,22 @@
             ══════════════════════════ -->
             <div id="section-upload" class="section">
                 <div class="card" style="max-width:680px;">
-                    <div class="card-title" style="margin-bottom:1.5rem;">
+                    <div class="card-title" style="margin-bottom:1.25rem;">
                         <i class="bi bi-cloud-upload"></i> Cargar y procesar documento
                     </div>
 
+                    <!-- ── Selector de modo ── -->
+                    <div class="upload-mode-tabs">
+                        <button id="modeFileBtn" class="mode-tab active" onclick="setUploadMode('file')">
+                            <i class="bi bi-upload"></i> Archivo
+                        </button>
+                        <button id="modeScanBtn" class="mode-tab" onclick="setUploadMode('scan')">
+                            <i class="bi bi-printer"></i> Escáner
+                        </button>
+                    </div>
+
+                    <!-- ── Modo: Archivo ── -->
+                    <div id="uploadFileSection">
                     <form id="uploadForm" action="/subir" method="post" enctype="multipart/form-data">
                         <div class="upload-zone" id="dropZone">
                             <input type="file" name="archivo" id="fileInput"
@@ -1372,6 +1409,98 @@
                             <span id="uploadLoadingLabel">Procesando documento con OCR, por favor espere…</span>
                         </div>
                     </form>
+                    </div><!-- /uploadFileSection -->
+
+                    <!-- ── Modo: Escáner ── -->
+                    <div id="uploadScanSection" style="display:none;">
+                        <!-- Dispositivo -->
+                        <div style="display:flex; align-items:flex-end; gap:0.5rem; margin-bottom:1rem;">
+                            <div class="form-group" style="flex:1; margin-bottom:0;">
+                                <label for="scanDevice">Dispositivo escáner</label>
+                                <select id="scanDevice" class="form-control" onchange="onScanDeviceChange()">
+                                    <option value="">Cargando dispositivos…</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="reloadScanDevices()"
+                                    title="Actualizar lista" style="padding:0.55rem 0.75rem; flex-shrink:0;">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+
+                        <!-- DPI + Modo -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="scanDpi">Resolución</label>
+                                <select id="scanDpi" class="form-control">
+                                    <option value="150">150 DPI — rápido</option>
+                                    <option value="300" selected>300 DPI — recomendado</option>
+                                    <option value="600">600 DPI — alta calidad</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="scanModo">Modo de color</label>
+                                <select id="scanModo" class="form-control">
+                                    <option value="color">Color</option>
+                                    <option value="gris">Escala de grises</option>
+                                    <option value="bw">Blanco y negro</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button id="btnEscanear" class="btn btn-primary btn-lg" onclick="iniciarEscaneo()" disabled>
+                            <i class="bi bi-printer"></i> Escanear
+                        </button>
+
+                        <!-- Vista previa del escaneo -->
+                        <div id="scanPreviewWrap" style="display:none; margin-top:1.25rem; padding-top:1.1rem; border-top:1px solid var(--border);">
+                            <div style="margin-bottom:1rem; text-align:center;">
+                                <img id="scanPreviewImg" src="" alt="Vista previa"
+                                     style="max-width:100%; max-height:320px; border-radius:8px;
+                                            border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="scanIdioma">Idioma del documento</label>
+                                    <select id="scanIdioma" class="form-control">
+                                        <option value="spa" selected>Español</option>
+                                        <option value="eng">Inglés</option>
+                                        <option value="spa+eng">Español + Inglés</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Selector de plantilla -->
+                            <div style="margin-top:0.6rem; padding-top:0.9rem; border-top:1px solid var(--border);">
+                                <label style="display:flex; align-items:center; gap:0.6rem; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" id="scanChkTemplate" onchange="onToggleScanTemplate()"
+                                           style="width:15px; height:15px; accent-color:var(--accent);">
+                                    <span style="font-size:0.87rem; font-weight:600; color:var(--text);">
+                                        Usar plantilla de OCR por zonas
+                                    </span>
+                                </label>
+                                <div id="scanTemplateSelectorWrap" style="display:none; margin-top:0.85rem;">
+                                    <select class="form-control" id="scanTemplateSelect">
+                                        <option value="">— Selecciona una plantilla —</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display:flex; gap:0.5rem; margin-top:1.1rem;">
+                                <button class="btn btn-secondary" onclick="cancelarEscaneo()">
+                                    <i class="bi bi-x-lg"></i> Descartar
+                                </button>
+                                <button id="btnProcesarScan" class="btn btn-primary btn-lg" onclick="procesarEscaneo()">
+                                    <i class="bi bi-cpu"></i> Procesar con OCR
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="loading-row" id="scanLoading">
+                            <div class="spinner"></div>
+                            <span id="scanLoadingLabel">Escaneando documento…</span>
+                        </div>
+                    </div><!-- /uploadScanSection -->
 
                     <!-- Previsualización de campos (antes de confirmar) -->
                     <div id="zonePreviewWrap" style="display:none; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border);">
@@ -2365,6 +2494,7 @@
                 plantilla_ocr_id: doc.plantilla_ocr_id,
                 plantilla_nombre: doc.plantilla_nombre,
                 zona_resultados:  doc.zona_resultados,
+                subido_por:       doc.subido_por,
             });
             document.getElementById('sidebarCount').textContent = ALL_DOCS.length;
             renderHomeDocs();   // actualizar tabla del home
@@ -2413,6 +2543,187 @@
         }
         document.getElementById('zonePreviewWrap').style.display = 'none';
         document.getElementById('zoneResultsInline').style.display = 'none';
+    }
+
+    /* ═══════════════════════════════════════
+       ESCÁNER
+    ═══════════════════════════════════════ */
+    let _scanTempKey = null;
+
+    function setUploadMode(mode) {
+        const fileSection = document.getElementById('uploadFileSection');
+        const scanSection = document.getElementById('uploadScanSection');
+        document.getElementById('modeFileBtn').classList.toggle('active', mode === 'file');
+        document.getElementById('modeScanBtn').classList.toggle('active', mode === 'scan');
+        fileSection.style.display = mode === 'file' ? '' : 'none';
+        scanSection.style.display = mode === 'scan' ? '' : 'none';
+        document.getElementById('zonePreviewWrap').style.display = 'none';
+        document.getElementById('zoneResultsInline').style.display = 'none';
+        _currentTempKey = null;
+        if (mode === 'scan') reloadScanDevices();
+    }
+
+    async function reloadScanDevices() {
+        const sel = document.getElementById('scanDevice');
+        const btn = document.getElementById('btnEscanear');
+        sel.innerHTML = '<option value="">Buscando escáneres…</option>';
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/scan/dispositivos');
+            if (!resp.ok) throw new Error((await resp.json()).detail || 'Error');
+            const devices = await resp.json();
+            if (devices.length === 0) {
+                sel.innerHTML = '<option value="">No se encontraron escáneres</option>';
+            } else {
+                sel.innerHTML = devices.map(d =>
+                    `<option value="${escAttr(d.id)}">${escHtml(d.nombre)}</option>`
+                ).join('');
+                btn.disabled = false;
+            }
+        } catch (e) {
+            sel.innerHTML = `<option value="">Error: ${escHtml(String(e.message || e))}</option>`;
+        }
+    }
+
+    function onScanDeviceChange() {
+        document.getElementById('btnEscanear').disabled =
+            !document.getElementById('scanDevice').value;
+    }
+
+    function onToggleScanTemplate() {
+        const checked = document.getElementById('scanChkTemplate').checked;
+        document.getElementById('scanTemplateSelectorWrap').style.display = checked ? '' : 'none';
+        document.getElementById('btnProcesarScan').innerHTML = checked
+            ? '<i class="bi bi-cpu"></i> Extraer campos y guardar'
+            : '<i class="bi bi-cpu"></i> Procesar con OCR';
+        if (checked) {
+            const sel = document.getElementById('scanTemplateSelect');
+            sel.innerHTML = '<option value="">— Selecciona una plantilla —</option>' +
+                ALL_PLANTILLAS.map(p =>
+                    `<option value="${p.id}">${escHtml(p.nombre)} (${p.zonas.length} campos)</option>`
+                ).join('');
+        }
+    }
+
+    async function iniciarEscaneo() {
+        const device = document.getElementById('scanDevice').value;
+        if (!device) return;
+        if (_scanTempKey) {
+            fetch(`/api/plantillas/temp/${_scanTempKey}`, { method: 'DELETE' }).catch(() => {});
+            _scanTempKey = null;
+        }
+        document.getElementById('scanPreviewWrap').style.display = 'none';
+        document.getElementById('zonePreviewWrap').style.display = 'none';
+        document.getElementById('zoneResultsInline').style.display = 'none';
+        document.getElementById('btnEscanear').disabled = true;
+        document.getElementById('scanLoadingLabel').textContent = 'Escaneando documento…';
+        document.getElementById('scanLoading').classList.add('active');
+        const fd = new FormData();
+        fd.append('device_id', device);
+        fd.append('dpi', document.getElementById('scanDpi').value);
+        fd.append('modo', document.getElementById('scanModo').value);
+        try {
+            const resp = await fetch('/scan/capturar', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert('Error al escanear: ' + (err.detail || 'Error desconocido'));
+                return;
+            }
+            const data = await resp.json();
+            _scanTempKey = data.temp_key;
+            document.getElementById('scanPreviewImg').src = data.url_preview + '?t=' + Date.now();
+            document.getElementById('scanPreviewWrap').style.display = 'block';
+            document.getElementById('scanPreviewWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {
+            alert('Error de conexión al escanear.');
+        } finally {
+            document.getElementById('btnEscanear').disabled = false;
+            document.getElementById('scanLoading').classList.remove('active');
+        }
+    }
+
+    async function procesarEscaneo() {
+        if (!_scanTempKey) return;
+        const usingTemplate = document.getElementById('scanChkTemplate').checked;
+        const templateId    = document.getElementById('scanTemplateSelect').value;
+        const idioma        = document.getElementById('scanIdioma').value;
+        document.getElementById('btnProcesarScan').disabled = true;
+        document.getElementById('scanLoadingLabel').textContent = 'Procesando OCR…';
+        document.getElementById('scanLoading').classList.add('active');
+        try {
+            if (usingTemplate && templateId) {
+                const fd = new FormData();
+                fd.append('temp_key', _scanTempKey);
+                fd.append('plantilla_id', templateId);
+                fd.append('idioma', idioma);
+                const resp = await fetch('/scan/preview-zonas', { method: 'POST', body: fd });
+                if (!resp.ok) {
+                    alert('Error: ' + ((await resp.json()).detail || 'Error en OCR por zonas'));
+                    return;
+                }
+                const data = await resp.json();
+                _currentTempKey = data.temp_key;
+                _scanTempKey = null;
+                document.getElementById('scanPreviewWrap').style.display = 'none';
+                mostrarPreview(data);
+            } else {
+                const fd = new FormData();
+                fd.append('temp_key', _scanTempKey);
+                fd.append('idioma', idioma);
+                const resp = await fetch('/scan/procesar', { method: 'POST', body: fd });
+                if (!resp.ok) {
+                    alert('Error: ' + ((await resp.json()).detail || 'Error en OCR'));
+                    return;
+                }
+                const doc = await resp.json();
+                _scanTempKey = null;
+                ALL_DOCS.unshift({
+                    id:               doc.id,
+                    nombre_archivo:   doc.nombre_archivo,
+                    tipo_archivo:     doc.tipo_archivo,
+                    tamano_mb:        doc.tamano_mb,
+                    texto_extraido:   doc.texto_extraido,
+                    fecha_carga:      doc.fecha_carga,
+                    idioma_ocr:       doc.idioma_ocr,
+                    ocr_confianza:    doc.ocr_confianza,
+                    plantilla_ocr_id: null,
+                    plantilla_nombre: null,
+                    zona_resultados:  null,
+                    subido_por:       doc.subido_por,
+                });
+                document.getElementById('sidebarCount').textContent = ALL_DOCS.length;
+                renderHomeDocs();
+                updateStorageDisplay();
+                if (typeof chartsInit !== 'undefined' && chartsInit) initCharts();
+                document.getElementById('scanPreviewWrap').style.display = 'none';
+                document.getElementById('zoneResultsBody').innerHTML = `
+                    <div style="display:flex; align-items:center; gap:0.5rem; padding:0.65rem 0.85rem;
+                                background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;
+                                font-size:0.82rem; color:#166534;">
+                        <i class="bi bi-printer-fill"></i>
+                        <strong>${escHtml(doc.nombre_archivo)}</strong> escaneado y guardado.
+                        <button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--success);"
+                                onclick="navigate('explorer')">Ver en Explorador →</button>
+                    </div>`;
+                document.getElementById('zoneResultsInline').style.display = 'block';
+                document.getElementById('zoneResultsInline').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        } catch {
+            alert('Error de conexión.');
+        } finally {
+            document.getElementById('btnProcesarScan').disabled = false;
+            document.getElementById('scanLoading').classList.remove('active');
+        }
+    }
+
+    async function cancelarEscaneo() {
+        if (_scanTempKey) {
+            fetch(`/api/plantillas/temp/${_scanTempKey}`, { method: 'DELETE' }).catch(() => {});
+            _scanTempKey = null;
+        }
+        document.getElementById('scanPreviewWrap').style.display = 'none';
+        document.getElementById('scanChkTemplate').checked = false;
+        onToggleScanTemplate();
     }
 
     /* ═══════════════════════════════════════

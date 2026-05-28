@@ -13,3 +13,4 @@ PyPDF2
 jinja2
 aiofiles
 itsdangerous
+pywin32

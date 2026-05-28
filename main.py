@@ -754,6 +754,125 @@ def cancelar_preview(temp_key: str, request: Request):
     return {"ok": True}
 
 
+# ── Escáner WIA ──────────────────────────────────────────
+
+@app.get("/scan/dispositivos")
+def scan_dispositivos(request: Request):
+    if not get_user(request):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    try:
+        from core.scanner import listar_dispositivos
+        return listar_dispositivos()
+    except ImportError:
+        raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar escáneres: {str(e)}")
+
+
+@app.post("/scan/capturar")
+async def scan_capturar(
+    request: Request,
+    device_id: str = Form(...),
+    dpi: int = Form(300),
+    modo: str = Form("color"),
+):
+    if not get_user(request):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    try:
+        from core.scanner import escanear
+        ruta = escanear(device_id, dpi, modo, directorio=TMP_DIR)
+        nombre = os.path.basename(ruta)
+        return {"ok": True, "temp_key": nombre, "url_preview": f"/uploads/tmp/{nombre}"}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al escanear: {str(e)}")
+
+
+@app.post("/scan/procesar")
+async def scan_procesar(
+    request: Request,
+    temp_key: str = Form(...),
+    idioma: str = Form("spa"),
+    db: Session = Depends(get_db),
+):
+    if not get_user(request):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    if any(c in temp_key for c in ("/", "\\", "..")):
+        raise HTTPException(status_code=400, detail="temp_key inválido")
+    ruta_tmp = os.path.join(TMP_DIR, temp_key)
+    if not os.path.exists(ruta_tmp):
+        raise HTTPException(status_code=404, detail="Archivo temporal no encontrado")
+    try:
+        texto, confianza = procesar_documento(ruta_tmp, idioma)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_final = f"{timestamp}_{temp_key}"
+    ruta_final = os.path.join(UPLOAD_DIR, nombre_final)
+    shutil.move(ruta_tmp, ruta_final)
+    tamano_mb = os.path.getsize(ruta_final) / (1024 * 1024)
+    documento = Documento(
+        nombre_archivo=temp_key,
+        tipo_archivo=".png",
+        tamano_mb=tamano_mb,
+        ruta_archivo=ruta_final,
+        texto_extraido=texto,
+        idioma_ocr=idioma,
+        ocr_confianza=confianza,
+        subido_por=get_user(request),
+    )
+    db.add(documento)
+    db.commit()
+    db.refresh(documento)
+    return documento.to_dict()
+
+
+@app.post("/scan/preview-zonas")
+async def scan_preview_zonas(
+    request: Request,
+    temp_key: str = Form(...),
+    plantilla_id: int = Form(...),
+    idioma: str = Form("spa"),
+    db: Session = Depends(get_db),
+):
+    if not get_user(request):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    if any(c in temp_key for c in ("/", "\\", "..")):
+        raise HTTPException(status_code=400, detail="temp_key inválido")
+    ruta_tmp = os.path.join(TMP_DIR, temp_key)
+    if not os.path.exists(ruta_tmp):
+        raise HTTPException(status_code=404, detail="Archivo temporal no encontrado")
+    plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
+    if not plantilla:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    if not plantilla.zonas:
+        raise HTTPException(status_code=400, detail="La plantilla no tiene zonas definidas")
+    try:
+        zonas_list = [z.to_dict() for z in plantilla.zonas]
+        resultados = procesar_por_zonas(
+            ruta_tmp, zonas_list,
+            plantilla.img_ancho, plantilla.img_alto,
+            idioma, 0,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
+    _preview_cache[temp_key] = {
+        "ruta_tmp": ruta_tmp,
+        "archivo_nombre": temp_key,
+        "idioma": idioma,
+        "plantilla_id": plantilla_id,
+        "plantilla_nombre": plantilla.nombre,
+        "resultados": resultados,
+    }
+    return {
+        "temp_key": temp_key,
+        "plantilla_nombre": plantilla.nombre,
+        "archivo_nombre": temp_key,
+        "resultados": resultados,
+    }
+
+
 # ── API general ───────────────────────────────────────────
 
 @app.get("/api/documentos")
