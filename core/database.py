@@ -10,10 +10,13 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://papervault:papervault@localhost:5432/papervault",
+    "postgresql://papervault:papervault@127.0.0.1:5432/papervault",
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# connect_timeout: sin él, en Windows psycopg puede esperar indefinidamente cuando
+# "localhost" resuelve primero a ::1 y PostgreSQL solo escucha en 127.0.0.1 (H-10).
+# Con el límite, el intento por IPv6 caduca y se pasa a la siguiente dirección.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 10})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

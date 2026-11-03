@@ -1,14 +1,19 @@
 import hashlib
 import json
+import logging
 import os
+import re
 import secrets
 import shutil
+import time
 import uuid
+from collections import deque
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
@@ -32,6 +37,117 @@ os.makedirs("static", exist_ok=True)
 _preview_cache: dict = {}
 
 
+# ── Registro de eventos de seguridad (Mejora H-14) ─────────
+# Registro persistente de eventos de seguridad (login, altas/bajas, cambios de
+# contraseña, descargas y borrados) en logs/seguridad.log.
+os.makedirs("logs", exist_ok=True)
+seguridad_log = logging.getLogger("papervault.seguridad")
+if not seguridad_log.handlers:
+    seguridad_log.setLevel(logging.INFO)
+    _fh = logging.FileHandler(os.path.join("logs", "seguridad.log"), encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    seguridad_log.addHandler(_fh)
+
+
+def _limpio(valor) -> str:
+    """Neutraliza caracteres de control para que un valor no pueda forjar líneas del log."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(valor))[:200]
+
+
+def log_seguridad(evento: str, request: Optional[Request] = None, usuario: Optional[str] = None, extra: str = ""):
+    ip = request.client.host if request is not None and request.client else "-"
+    seguridad_log.info(
+        "evento=%s usuario=%s ip=%s %s", evento, _limpio(usuario or "-"), ip, _limpio(extra)
+    )
+
+
+# ── Límite de intentos de inicio de sesión (Mejora H-05) ───
+# Ventana deslizante en memoria por (IP, usuario). Tras 5 fallos en 5 minutos
+# se bloquea temporalmente con respuesta 429.
+_INTENTOS: dict = {}
+_MAX_INTENTOS = 5
+_VENTANA_SEG = 300
+_MAX_CLAVES = 10_000  # por encima de esto se purgan las entradas vencidas
+
+
+def _clave_intentos(request: Request, username: str) -> tuple:
+    ip = request.client.host if request.client else "-"
+    return (ip, username.lower())
+
+
+def _vigentes(clave, ahora: float) -> Optional[deque]:
+    q = _INTENTOS.get(clave)
+    if q is None:
+        return None
+    while q and ahora - q[0] > _VENTANA_SEG:
+        q.popleft()
+    if not q:
+        del _INTENTOS[clave]
+        return None
+    return q
+
+
+def _esta_bloqueado(clave) -> bool:
+    q = _vigentes(clave, time.time())
+    return q is not None and len(q) >= _MAX_INTENTOS
+
+
+def _registrar_fallo(clave):
+    ahora = time.time()
+    if len(_INTENTOS) >= _MAX_CLAVES:
+        for k in list(_INTENTOS):
+            _vigentes(k, ahora)
+    _INTENTOS.setdefault(clave, deque()).append(ahora)
+
+
+def _limpiar_intentos(clave):
+    _INTENTOS.pop(clave, None)
+
+
+def _json_seguro(obj) -> str:
+    """
+    Serializa a JSON para incrustar dentro de <script> sin permitir ruptura de
+    contexto (Mejora H-04): se escapan < > & y separadores de línea Unicode.
+    """
+    s = json.dumps(obj, ensure_ascii=False)
+    return (s.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+# ── Validación de archivos subidos (Mejora H-11) ───────────
+# Registro técnico: el detalle de los errores internos va aquí, no al cliente.
+app_log = logging.getLogger("papervault")
+
+# Firmas (cabeceras mágicas) aceptadas para cada extensión soportada.
+_FIRMAS = {
+    ".pdf":  (b"%PDF-",),
+    ".png":  (b"\x89PNG\r\n\x1a\n",),
+    ".jpg":  (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".tif":  (b"II*\x00", b"MM\x00*"),
+    ".tiff": (b"II*\x00", b"MM\x00*"),
+    ".bmp":  (b"BM",),
+}
+
+
+def _nombre_seguro(nombre: Optional[str]) -> str:
+    """
+    Deja solo el nombre base del archivo, sin rutas ni caracteres especiales.
+    Evita que un nombre como "../../main.py" escriba fuera de uploads/.
+    """
+    base = os.path.basename((nombre or "").replace("\\", "/"))
+    base = re.sub(r"[^\w.\-() ]", "_", base).strip(" .")
+    return base[-150:] or "archivo"
+
+
+def _validar_contenido(archivo: UploadFile, extension: str):
+    """Comprueba que el contenido real del archivo corresponda a su extensión."""
+    cabecera = archivo.file.read(16)
+    archivo.file.seek(0)
+    if not any(cabecera.startswith(f) for f in _FIRMAS.get(extension, ())):
+        raise HTTPException(status_code=400, detail="El contenido del archivo no corresponde a su extensión.")
+
+
 # ── Utilidades de contraseñas ──────────────────────────────
 
 def _hashear(password: str) -> str:
@@ -49,16 +165,88 @@ def _verificar(password: str, stored: str) -> bool:
     except Exception:
         return False
 
+
+# Hash con el mismo formato que _hashear, para igualar tiempos en logins de usuario inexistente (H-12)
+_HASH_FICTICIO = _hashear(secrets.token_urlsafe(16))
+
 app = FastAPI(
     title="PaperVault — Sistema de Gestión Documental",
     description="Sistema para escanear, procesar y gestionar documentos mediante OCR",
     version="1.0.0",
+    # Mejora H-11: la documentación automática no es pública; se sirve más
+    # abajo por rutas que exigen rol de administrador.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
-app.add_middleware(SessionMiddleware, secret_key="papervault-secret-key-dev-2024")
+# ── Clave de sesión (Mejora de auditoría H-01) ─────────────
+# La clave que firma las cookies de sesión DEBE provenir de una variable de
+# entorno/secreto; ya no está escrita en el código. Sin SESSION_SECRET la
+# aplicación no arranca, para evitar volver a una clave conocida por defecto.
+SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
+if len(SESSION_SECRET) < 32:
+    raise RuntimeError(
+        "SESSION_SECRET no definida o demasiado corta (mínimo 32 caracteres). "
+        "Genere una con: python -c \"import secrets; print(secrets.token_urlsafe(48))\" "
+        "y colóquela en el archivo .env antes de iniciar la aplicación."
+    )
+SESSION_HTTPS = os.getenv("SESSION_HTTPS", "0") == "1"
+# Cookie de sesión endurecida: HttpOnly (por defecto), SameSite=strict,
+# caducidad de 30 minutos y Secure cuando se sirva por HTTPS (SESSION_HTTPS=1).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="strict",
+    https_only=SESSION_HTTPS,
+    max_age=1800,
+)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Nota de auditoría (H-03): la carpeta uploads/ ya NO se publica como estática.
+# Sus archivos se entregan por la ruta autenticada /uploads/{ruta} (ver más abajo).
 templates = Jinja2Templates(directory="templates")
+
+
+# ── Cabeceras de seguridad (Mejora de auditoría H-08) ──────
+# Chart.js, bootstrap-icons e Inter se sirven desde /static/vendor, así que la CSP
+# solo admite el propio origen. Se permite el enmarcado desde el mismo origen
+# porque el visor muestra los PDF en un <iframe> apuntando a /ver/{id}.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+])
+
+# Swagger UI y ReDoc (solo admin) cargan sus recursos desde jsDelivr; ReDoc además
+# usa Google Fonts y un worker blob:. Esta CSP se aplica únicamente a /docs y /redoc.
+CSP_DOCS = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https://cdn.redoc.ly",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+])
+
+
+@app.middleware("http")
+async def cabeceras_seguridad(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    if SESSION_HTTPS:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 
 # ── Pydantic models ───────────────────────────────────────
@@ -84,11 +272,41 @@ def get_user(request: Request) -> Optional[str]:
 def get_rol(request: Request) -> Optional[str]:
     return request.session.get("rol")
 
-def require_admin(request: Request):
-    if not get_user(request):
-        raise HTTPException(status_code=302, headers={"Location": "/login"})
-    if get_rol(request) != "admin":
+def usuario_valido(request: Request, db: Session) -> Optional[Usuario]:
+    """
+    Revalida la sesión contra la base de datos en cada petición (Mejora H-06):
+    el usuario debe existir y seguir activo. Si fue eliminado o desactivado, la
+    sesión se invalida de inmediato. El rol se toma de la base, no de la cookie.
+    """
+    nombre = get_user(request)
+    if not nombre:
+        return None
+    u = db.query(Usuario).filter(Usuario.nombre_usuario == nombre, Usuario.activo == True).first()
+    if not u:
+        request.session.clear()
+        return None
+    request.session["rol"] = u.rol
+    # Contraseña temporal pendiente (Mejora H-07): mientras primer_login sea
+    # verdadero solo se permite cambiarla; el panel redirige y el resto responde 403.
+    if u.primer_login and request.url.path != "/cambiar-password":
+        if request.method == "GET" and request.url.path == "/":
+            raise HTTPException(status_code=303, headers={"Location": "/cambiar-password"})
+        raise HTTPException(status_code=403, detail="Debe cambiar la contraseña temporal antes de continuar.")
+    return u
+
+
+def require_sesion(request: Request, db: Session) -> Usuario:
+    u = usuario_valido(request, db)
+    if not u:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return u
+
+
+def require_admin(request: Request, db: Session) -> Usuario:
+    u = require_sesion(request, db)
+    if u.rol != "admin":
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador.")
+    return u
 
 
 @app.on_event("startup")
@@ -128,7 +346,7 @@ def startup():
 def pagina_login(request: Request):
     if get_user(request):
         return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login")
@@ -138,16 +356,34 @@ async def hacer_login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    clave = _clave_intentos(request, username)
+    if _esta_bloqueado(clave):
+        log_seguridad("login_bloqueado", request, username)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": "Demasiados intentos fallidos. Espere unos minutos e intente de nuevo."},
+            status_code=429,
+        )
     usuario = db.query(Usuario).filter(
         Usuario.nombre_usuario == username,
         Usuario.activo == True,
     ).first()
+    if usuario is None:
+        # Cálculo PBKDF2 ficticio para igualar el tiempo de respuesta y evitar
+        # la enumeración de usuarios por tiempo (Mejora H-12).
+        _verificar(password, _HASH_FICTICIO)
     if not usuario or not _verificar(password, usuario.password_hash):
+        _registrar_fallo(clave)
+        log_seguridad("login_fallido", request, username)
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Usuario o contraseña incorrectos."},
+            {"error": "Usuario o contraseña incorrectos."},
             status_code=401,
         )
+    _limpiar_intentos(clave)
+    log_seguridad("login_ok", request, usuario.nombre_usuario)
     request.session["user"] = usuario.nombre_usuario
     request.session["rol"]  = usuario.rol
     if usuario.primer_login:
@@ -162,10 +398,10 @@ def hacer_logout(request: Request):
 
 
 @app.get("/cambiar-password", response_class=HTMLResponse)
-def cambiar_password_get(request: Request):
-    if not get_user(request):
+def cambiar_password_get(request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
-    return templates.TemplateResponse("cambiar_password.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "cambiar_password.html", {"error": None})
 
 
 @app.post("/cambiar-password")
@@ -175,27 +411,27 @@ async def cambiar_password_post(
     password_confirmar: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = get_user(request)
-    if not user:
+    usuario = usuario_valido(request, db)
+    if not usuario:
         return RedirectResponse(url="/login", status_code=302)
     if password_nuevo != password_confirmar:
         return templates.TemplateResponse(
+            request,
             "cambiar_password.html",
-            {"request": request, "error": "Las contraseñas no coinciden."},
+            {"error": "Las contraseñas no coinciden."},
             status_code=400,
         )
     if len(password_nuevo) < 8:
         return templates.TemplateResponse(
+            request,
             "cambiar_password.html",
-            {"request": request, "error": "La contraseña debe tener al menos 8 caracteres."},
+            {"error": "La contraseña debe tener al menos 8 caracteres."},
             status_code=400,
         )
-    usuario = db.query(Usuario).filter(Usuario.nombre_usuario == user).first()
-    if not usuario:
-        return RedirectResponse(url="/login", status_code=302)
     usuario.password_hash = _hashear(password_nuevo)
     usuario.primer_login = False
     db.commit()
+    log_seguridad("password_cambiado", request, usuario.nombre_usuario)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -203,7 +439,7 @@ async def cambiar_password_post(
 
 @app.get("/api/usuarios")
 def listar_usuarios(request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     return [u.to_dict() for u in db.query(Usuario).order_by(Usuario.fecha_creacion).all()]
 
 
@@ -214,7 +450,7 @@ async def crear_usuario(
     rol: str = Form(default="usuario"),
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
     if db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first():
         raise HTTPException(status_code=400, detail="El nombre de usuario ya existe.")
     if rol not in ("admin", "usuario"):
@@ -229,6 +465,7 @@ async def crear_usuario(
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
+    log_seguridad("usuario_creado", request, get_user(request), f"nuevo={nombre_usuario} rol={rol}")
     data = nuevo.to_dict()
     data["password_inicial"] = password_inicial   # solo se devuelve una vez
     return data
@@ -236,7 +473,7 @@ async def crear_usuario(
 
 @app.delete("/api/usuarios/{usuario_id}")
 def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -244,12 +481,13 @@ def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="No se puede eliminar al administrador principal.")
     db.delete(u)
     db.commit()
+    log_seguridad("usuario_eliminado", request, get_user(request), f"objetivo={u.nombre_usuario}")
     return {"ok": True}
 
 
 @app.post("/api/usuarios/{usuario_id}/reset")
 def resetear_password(request: Request, usuario_id: int, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -257,6 +495,7 @@ def resetear_password(request: Request, usuario_id: int, db: Session = Depends(g
     u.password_hash = _hashear(nueva)
     u.primer_login = True
     db.commit()
+    log_seguridad("password_reseteado", request, get_user(request), f"objetivo={u.nombre_usuario}")
     return {"password_temporal": nueva}
 
 
@@ -264,24 +503,25 @@ def resetear_password(request: Request, usuario_id: int, db: Session = Depends(g
 
 @app.get("/", response_class=HTMLResponse)
 def pagina_principal(request: Request, db: Session = Depends(get_db)):
-    user = get_user(request)
-    if not user:
+    u = usuario_valido(request, db)
+    if not u:
         return RedirectResponse(url="/login", status_code=302)
+    user = u.nombre_usuario
 
-    documentos = db.query(Documento).order_by(Documento.fecha_carga.desc()).all()
+    documentos =db.query(Documento).order_by(Documento.fecha_carga.desc()).all()
     plantillas = db.query(PlantillaOCR).order_by(PlantillaOCR.fecha_creacion.desc()).all()
 
     total     = db.query(func.count(Documento.id)).scalar() or 0
     total_pdf = db.query(func.count(Documento.id)).filter(Documento.tipo_archivo == ".pdf").scalar() or 0
     total_mb  = db.query(func.sum(Documento.tamano_mb)).scalar() or 0.0
 
-    documentos_json  = json.dumps([d.to_dict() for d in documentos], ensure_ascii=False)
-    plantillas_json  = json.dumps([p.to_dict() for p in plantillas], ensure_ascii=False)
+    documentos_json  = _json_seguro([d.to_dict() for d in documentos])
+    plantillas_json  = _json_seguro([p.to_dict() for p in plantillas])
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "documentos": documentos,
             "documentos_json": documentos_json,
             "plantillas_json": plantillas_json,
@@ -306,18 +546,20 @@ async def subir_documento(
     idioma: str = Form(default="spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(
             status_code=400,
             detail=f"Formato no soportado. Use: {', '.join(sorted(FORMATOS_SOPORTADOS))}",
         )
+    _validar_contenido(archivo, extension)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_seguro = f"{timestamp}_{archivo.filename}"
+    nombre_seguro = f"{timestamp}_{nombre_original}"
     ruta_destino = os.path.join(UPLOAD_DIR, nombre_seguro)
 
     with open(ruta_destino, "wb") as buffer:
@@ -327,12 +569,13 @@ async def subir_documento(
 
     try:
         texto, confianza = procesar_documento(ruta_destino, idioma)
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR al procesar %s", ruta_destino)
         os.remove(ruta_destino)
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR.")
 
     documento = Documento(
-        nombre_archivo=archivo.filename,
+        nombre_archivo=nombre_original,
         tipo_archivo=extension,
         tamano_mb=tamano_mb,
         ruta_archivo=ruta_destino,
@@ -352,13 +595,14 @@ async def subir_documento(
 
 @app.get("/descargar/{doc_id}")
 def descargar_texto(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
 
     nombre_txt = os.path.splitext(documento.nombre_archivo)[0] + "_ocr.txt"
+    log_seguridad("descarga_texto", request, get_user(request), f"doc_id={doc_id}")
     return PlainTextResponse(
         content=documento.texto_extraido,
         headers={"Content-Disposition": f'attachment; filename="{nombre_txt}"'},
@@ -369,13 +613,14 @@ def descargar_texto(doc_id: int, request: Request, db: Session = Depends(get_db)
 
 @app.get("/archivo/{doc_id}")
 def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     if not os.path.exists(documento.ruta_archivo):
         raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    log_seguridad("descarga_original", request, get_user(request), f"doc_id={doc_id}")
     return FileResponse(
         path=documento.ruta_archivo,
         filename=documento.nombre_archivo,
@@ -385,7 +630,7 @@ def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depe
 
 @app.get("/ver/{doc_id}")
 def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
@@ -414,7 +659,7 @@ def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(ge
 
 @app.delete("/eliminar/{doc_id}")
 def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
@@ -424,19 +669,23 @@ def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_
 
     db.delete(documento)
     db.commit()
+    log_seguridad("documento_eliminado", request, get_user(request),
+                  f"doc_id={doc_id} nombre={documento.nombre_archivo}")
     return {"mensaje": f"Documento '{documento.nombre_archivo}' eliminado correctamente"}
 
 
 # ── Plantillas OCR: CRUD ──────────────────────────────────
 
 @app.get("/api/plantillas")
-def listar_plantillas(db: Session = Depends(get_db)):
+def listar_plantillas(request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     plantillas = db.query(PlantillaOCR).order_by(PlantillaOCR.fecha_creacion.desc()).all()
     return [p.to_dict() for p in plantillas]
 
 
 @app.get("/api/plantillas/{plantilla_id}")
-def obtener_plantilla(plantilla_id: int, db: Session = Depends(get_db)):
+def obtener_plantilla(plantilla_id: int, request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -451,14 +700,15 @@ async def crear_plantilla(
     imagen_ref: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
 
-    extension = os.path.splitext(imagen_ref.filename)[1].lower()
+    extension = os.path.splitext(_nombre_seguro(imagen_ref.filename))[1].lower()
     if extension not in FORMATOS_IMAGEN:
         raise HTTPException(
             status_code=400,
             detail=f"La imagen de referencia debe ser: {', '.join(sorted(FORMATOS_IMAGEN))}",
         )
+    _validar_contenido(imagen_ref, extension)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_archivo = f"ref_{timestamp}{extension}"
@@ -485,7 +735,7 @@ async def crear_plantilla(
 
 @app.delete("/api/plantillas/{plantilla_id}")
 def eliminar_plantilla(plantilla_id: int, request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -495,6 +745,8 @@ def eliminar_plantilla(plantilla_id: int, request: Request, db: Session = Depend
 
     db.delete(plantilla)
     db.commit()
+    log_seguridad("plantilla_eliminada", request, get_user(request),
+                  f"plantilla_id={plantilla_id} nombre={plantilla.nombre}")
     return {"mensaje": f"Plantilla '{plantilla.nombre}' eliminada"}
 
 
@@ -507,7 +759,7 @@ def guardar_zonas(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -540,7 +792,7 @@ async def procesar_con_zonas(
     pagina_pdf: int = Form(default=0),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
@@ -550,16 +802,18 @@ async def procesar_con_zonas(
     if not plantilla.zonas:
         raise HTTPException(status_code=400, detail="La plantilla no tiene zonas definidas")
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(
             status_code=400,
             detail=f"Formato no soportado. Use: {', '.join(sorted(FORMATOS_SOPORTADOS))}",
         )
+    _validar_contenido(archivo, extension)
 
     # Guardar el archivo definitivamente en uploads/
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_seguro = f"{timestamp}_{archivo.filename}"
+    nombre_seguro = f"{timestamp}_{nombre_original}"
     ruta_destino = os.path.join(UPLOAD_DIR, nombre_seguro)
 
     with open(ruta_destino, "wb") as f:
@@ -577,9 +831,10 @@ async def procesar_con_zonas(
             idioma,
             pagina_pdf,
         )
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR por zonas al procesar %s", ruta_destino)
         os.remove(ruta_destino)
-        raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
 
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
@@ -588,7 +843,7 @@ async def procesar_con_zonas(
     confianza_zonas = round(sum(scores) / len(scores), 4) if scores else 0.0
 
     documento = Documento(
-        nombre_archivo=archivo.filename,
+        nombre_archivo=nombre_original,
         tipo_archivo=extension,
         tamano_mb=tamano_mb,
         ruta_archivo=ruta_destino,
@@ -605,7 +860,7 @@ async def procesar_con_zonas(
 
     return {
         "plantilla": plantilla.nombre,
-        "archivo": archivo.filename,
+        "archivo": nombre_original,
         "doc_id": documento.id,
         "resultados": resultados,
     }
@@ -622,7 +877,7 @@ async def preview_zonas(
     pagina_pdf: int = Form(default=0),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
@@ -631,9 +886,11 @@ async def preview_zonas(
     if not plantilla.zonas:
         raise HTTPException(status_code=400, detail="La plantilla no tiene zonas definidas")
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(status_code=400, detail=f"Formato no soportado: {extension}")
+    _validar_contenido(archivo, extension)
 
     # Guardar en carpeta temporal con clave única
     temp_key = f"{uuid.uuid4().hex}{extension}"
@@ -649,15 +906,16 @@ async def preview_zonas(
             plantilla.img_ancho, plantilla.img_alto,
             idioma, pagina_pdf,
         )
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR por zonas (preview) al procesar %s", ruta_tmp)
         if os.path.exists(ruta_tmp):
             os.remove(ruta_tmp)
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
 
     # Guardar en cache para la etapa de confirmación
     _preview_cache[temp_key] = {
         "ruta_tmp": ruta_tmp,
-        "archivo_nombre": archivo.filename,
+        "archivo_nombre": nombre_original,
         "idioma": idioma,
         "plantilla_id": plantilla_id,
         "plantilla_nombre": plantilla.nombre,
@@ -667,7 +925,7 @@ async def preview_zonas(
     return {
         "temp_key": temp_key,
         "plantilla_nombre": plantilla.nombre,
-        "archivo_nombre": archivo.filename,
+        "archivo_nombre": nombre_original,
         "resultados": resultados,
     }
 
@@ -681,7 +939,7 @@ async def confirmar_zona(
     resultados_editados: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     cache = _preview_cache.pop(temp_key, None)
@@ -713,7 +971,8 @@ async def confirmar_zona(
                 if isinstance(idx, int) and 0 <= idx < len(resultados):
                     resultados[idx]["texto_extraido"] = str(edit.get("texto_extraido", ""))
         except Exception:
-            pass  # Si falla el parseo se conservan los resultados originales
+            # Si falla el parseo se conservan los resultados originales
+            app_log.warning("resultados_editados inválido para %s; se conservan los originales", temp_key)
 
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
@@ -743,8 +1002,8 @@ async def confirmar_zona(
 # ── Plantillas OCR: cancelar preview ─────────────────────
 
 @app.delete("/api/plantillas/temp/{temp_key}")
-def cancelar_preview(temp_key: str, request: Request):
-    if not get_user(request):
+def cancelar_preview(temp_key: str, request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
@@ -757,16 +1016,17 @@ def cancelar_preview(temp_key: str, request: Request):
 # ── Escáner WIA ──────────────────────────────────────────
 
 @app.get("/scan/dispositivos")
-def scan_dispositivos(request: Request):
-    if not get_user(request):
+def scan_dispositivos(request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     try:
         from core.scanner import listar_dispositivos
         return listar_dispositivos()
     except ImportError:
         raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al listar escáneres: {str(e)}")
+    except Exception:
+        app_log.exception("Error al listar escáneres")
+        raise HTTPException(status_code=500, detail="No se pudo obtener la lista de escáneres.")
 
 
 @app.post("/scan/capturar")
@@ -775,8 +1035,9 @@ async def scan_capturar(
     device_id: str = Form(...),
     dpi: int = Form(300),
     modo: str = Form("color"),
+    db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     try:
         from core.scanner import escanear
@@ -785,8 +1046,9 @@ async def scan_capturar(
         return {"ok": True, "temp_key": nombre, "url_preview": f"/uploads/tmp/{nombre}"}
     except ImportError:
         raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al escanear: {str(e)}")
+    except Exception:
+        app_log.exception("Error al escanear con el dispositivo %s", device_id)
+        raise HTTPException(status_code=500, detail="No se pudo completar el escaneo.")
 
 
 @app.post("/scan/procesar")
@@ -796,7 +1058,7 @@ async def scan_procesar(
     idioma: str = Form("spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
@@ -805,8 +1067,9 @@ async def scan_procesar(
         raise HTTPException(status_code=404, detail="Archivo temporal no encontrado")
     try:
         texto, confianza = procesar_documento(ruta_tmp, idioma)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+    except Exception:
+        app_log.exception("Error en OCR al procesar el escaneo %s", ruta_tmp)
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR.")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_final = f"{timestamp}_{temp_key}"
     ruta_final = os.path.join(UPLOAD_DIR, nombre_final)
@@ -836,7 +1099,7 @@ async def scan_preview_zonas(
     idioma: str = Form("spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
@@ -855,8 +1118,9 @@ async def scan_preview_zonas(
             plantilla.img_ancho, plantilla.img_alto,
             idioma, 0,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
+    except Exception:
+        app_log.exception("Error en OCR por zonas al procesar el escaneo %s", ruta_tmp)
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
     _preview_cache[temp_key] = {
         "ruta_tmp": ruta_tmp,
         "archivo_nombre": temp_key,
@@ -873,10 +1137,59 @@ async def scan_preview_zonas(
     }
 
 
+# ── Entrega autenticada de archivos subidos (Mejora H-03) ──
+# Reemplaza el antiguo montaje estático de /uploads. Exige sesión y evita el
+# salto de directorio resolviendo la ruta dentro de UPLOAD_DIR.
+
+@app.get("/uploads/{ruta:path}")
+def servir_subido(ruta: str, request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
+    base = os.path.realpath(UPLOAD_DIR)
+    destino = os.path.realpath(os.path.join(UPLOAD_DIR, ruta))
+    if not destino.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    if not os.path.isfile(destino):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(path=destino)
+
+
+# ── Documentación de la API, solo administradores (Mejora H-11) ──
+
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+def docs_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    response = get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{app.title} - Documentación",
+        swagger_favicon_url="/static/favicon.ico",
+    )
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    response = get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{app.title} - ReDoc",
+        redoc_favicon_url="/static/favicon.ico",
+    )
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
+
+
 # ── API general ───────────────────────────────────────────
 
 @app.get("/api/documentos")
-def listar_documentos(busqueda: str = "", db: Session = Depends(get_db)):
+def listar_documentos(request: Request, busqueda: str = "", db: Session = Depends(get_db)):
+    require_sesion(request, db)
     query = db.query(Documento)
     if busqueda:
         query = query.filter(Documento.texto_extraido.contains(busqueda))
@@ -885,7 +1198,8 @@ def listar_documentos(busqueda: str = "", db: Session = Depends(get_db)):
 
 
 @app.get("/api/estadisticas")
-def estadisticas(db: Session = Depends(get_db)):
+def estadisticas(request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     total    = db.query(func.count(Documento.id)).scalar() or 0
     by_type  = db.query(Documento.tipo_archivo, func.count(Documento.id)).group_by(Documento.tipo_archivo).all()
     total_mb = db.query(func.sum(Documento.tamano_mb)).scalar() or 0.0
