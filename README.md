@@ -28,7 +28,7 @@ Sistema de Gestión Documental con OCR para la digitalización, indexación y co
 
 ## Prerrequisitos
 
-- Python 3.8+
+- Python 3.12 (paddlepaddle solo publica paquetes para Windows hasta Python 3.13)
 - Docker Desktop
 - Poppler (requerido por `pdf2image` para convertir PDFs)
 
@@ -74,7 +74,7 @@ docker compose stop
 ### 3. Dependencias Python
 
 ```bash
-python -m venv venv
+py -3.12 -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```

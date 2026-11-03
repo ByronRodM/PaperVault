@@ -346,7 +346,7 @@ def startup():
 def pagina_login(request: Request):
     if get_user(request):
         return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login")
@@ -360,8 +360,9 @@ async def hacer_login(
     if _esta_bloqueado(clave):
         log_seguridad("login_bloqueado", request, username)
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Demasiados intentos fallidos. Espere unos minutos e intente de nuevo."},
+            {"error": "Demasiados intentos fallidos. Espere unos minutos e intente de nuevo."},
             status_code=429,
         )
     usuario = db.query(Usuario).filter(
@@ -376,8 +377,9 @@ async def hacer_login(
         _registrar_fallo(clave)
         log_seguridad("login_fallido", request, username)
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "error": "Usuario o contraseña incorrectos."},
+            {"error": "Usuario o contraseña incorrectos."},
             status_code=401,
         )
     _limpiar_intentos(clave)
@@ -399,7 +401,7 @@ def hacer_logout(request: Request):
 def cambiar_password_get(request: Request, db: Session = Depends(get_db)):
     if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
-    return templates.TemplateResponse("cambiar_password.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "cambiar_password.html", {"error": None})
 
 
 @app.post("/cambiar-password")
@@ -414,14 +416,16 @@ async def cambiar_password_post(
         return RedirectResponse(url="/login", status_code=302)
     if password_nuevo != password_confirmar:
         return templates.TemplateResponse(
+            request,
             "cambiar_password.html",
-            {"request": request, "error": "Las contraseñas no coinciden."},
+            {"error": "Las contraseñas no coinciden."},
             status_code=400,
         )
     if len(password_nuevo) < 8:
         return templates.TemplateResponse(
+            request,
             "cambiar_password.html",
-            {"request": request, "error": "La contraseña debe tener al menos 8 caracteres."},
+            {"error": "La contraseña debe tener al menos 8 caracteres."},
             status_code=400,
         )
     usuario.password_hash = _hashear(password_nuevo)
@@ -515,9 +519,9 @@ def pagina_principal(request: Request, db: Session = Depends(get_db)):
     plantillas_json  = _json_seguro([p.to_dict() for p in plantillas])
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "documentos": documentos,
             "documentos_json": documentos_json,
             "plantillas_json": plantillas_json,
@@ -1165,24 +1169,24 @@ def docs_admin(request: Request, db: Session = Depends(get_db)):
         title=f"{app.title} - Documentación",
         swagger_favicon_url="/static/favicon.ico",
     )
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
 
 
 @app.get("/redoc", include_in_schema=False)
 def redoc_admin(request: Request, db: Session = Depends(get_db)):
-    response.headers["Content-Security-Policy"] = CSP_DOCS
-    return response
     require_admin(request, db)
     response = get_redoc_html(
         openapi_url="/openapi.json",
         title=f"{app.title} - ReDoc",
         redoc_favicon_url="/static/favicon.ico",
     )
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
 
 
 # ── API general ───────────────────────────────────────────
 
-    response.headers["Content-Security-Policy"] = CSP_DOCS
-    return response
 @app.get("/api/documentos")
 def listar_documentos(request: Request, busqueda: str = "", db: Session = Depends(get_db)):
     require_sesion(request, db)
