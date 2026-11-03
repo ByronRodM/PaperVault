@@ -12,7 +12,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
@@ -113,6 +114,40 @@ def _json_seguro(obj) -> str:
              .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
+# ── Validación de archivos subidos (Mejora H-11) ───────────
+# Registro técnico: el detalle de los errores internos va aquí, no al cliente.
+app_log = logging.getLogger("papervault")
+
+# Firmas (cabeceras mágicas) aceptadas para cada extensión soportada.
+_FIRMAS = {
+    ".pdf":  (b"%PDF-",),
+    ".png":  (b"\x89PNG\r\n\x1a\n",),
+    ".jpg":  (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".tif":  (b"II*\x00", b"MM\x00*"),
+    ".tiff": (b"II*\x00", b"MM\x00*"),
+    ".bmp":  (b"BM",),
+}
+
+
+def _nombre_seguro(nombre: Optional[str]) -> str:
+    """
+    Deja solo el nombre base del archivo, sin rutas ni caracteres especiales.
+    Evita que un nombre como "../../main.py" escriba fuera de uploads/.
+    """
+    base = os.path.basename((nombre or "").replace("\\", "/"))
+    base = re.sub(r"[^\w.\-() ]", "_", base).strip(" .")
+    return base[-150:] or "archivo"
+
+
+def _validar_contenido(archivo: UploadFile, extension: str):
+    """Comprueba que el contenido real del archivo corresponda a su extensión."""
+    cabecera = archivo.file.read(16)
+    archivo.file.seek(0)
+    if not any(cabecera.startswith(f) for f in _FIRMAS.get(extension, ())):
+        raise HTTPException(status_code=400, detail="El contenido del archivo no corresponde a su extensión.")
+
+
 # ── Utilidades de contraseñas ──────────────────────────────
 
 def _hashear(password: str) -> str:
@@ -138,6 +173,11 @@ app = FastAPI(
     title="PaperVault — Sistema de Gestión Documental",
     description="Sistema para escanear, procesar y gestionar documentos mediante OCR",
     version="1.0.0",
+    # Mejora H-11: la documentación automática no es pública; se sirve más
+    # abajo por rutas que exigen rol de administrador.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # ── Clave de sesión (Mejora de auditoría H-01) ─────────────
@@ -493,15 +533,17 @@ async def subir_documento(
     if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(
             status_code=400,
             detail=f"Formato no soportado. Use: {', '.join(sorted(FORMATOS_SOPORTADOS))}",
         )
+    _validar_contenido(archivo, extension)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_seguro = f"{timestamp}_{archivo.filename}"
+    nombre_seguro = f"{timestamp}_{nombre_original}"
     ruta_destino = os.path.join(UPLOAD_DIR, nombre_seguro)
 
     with open(ruta_destino, "wb") as buffer:
@@ -511,12 +553,13 @@ async def subir_documento(
 
     try:
         texto, confianza = procesar_documento(ruta_destino, idioma)
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR al procesar %s", ruta_destino)
         os.remove(ruta_destino)
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR.")
 
     documento = Documento(
-        nombre_archivo=archivo.filename,
+        nombre_archivo=nombre_original,
         tipo_archivo=extension,
         tamano_mb=tamano_mb,
         ruta_archivo=ruta_destino,
@@ -643,12 +686,13 @@ async def crear_plantilla(
 ):
     require_admin(request, db)
 
-    extension = os.path.splitext(imagen_ref.filename)[1].lower()
+    extension = os.path.splitext(_nombre_seguro(imagen_ref.filename))[1].lower()
     if extension not in FORMATOS_IMAGEN:
         raise HTTPException(
             status_code=400,
             detail=f"La imagen de referencia debe ser: {', '.join(sorted(FORMATOS_IMAGEN))}",
         )
+    _validar_contenido(imagen_ref, extension)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_archivo = f"ref_{timestamp}{extension}"
@@ -742,16 +786,18 @@ async def procesar_con_zonas(
     if not plantilla.zonas:
         raise HTTPException(status_code=400, detail="La plantilla no tiene zonas definidas")
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(
             status_code=400,
             detail=f"Formato no soportado. Use: {', '.join(sorted(FORMATOS_SOPORTADOS))}",
         )
+    _validar_contenido(archivo, extension)
 
     # Guardar el archivo definitivamente en uploads/
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_seguro = f"{timestamp}_{archivo.filename}"
+    nombre_seguro = f"{timestamp}_{nombre_original}"
     ruta_destino = os.path.join(UPLOAD_DIR, nombre_seguro)
 
     with open(ruta_destino, "wb") as f:
@@ -769,9 +815,10 @@ async def procesar_con_zonas(
             idioma,
             pagina_pdf,
         )
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR por zonas al procesar %s", ruta_destino)
         os.remove(ruta_destino)
-        raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
 
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
@@ -780,7 +827,7 @@ async def procesar_con_zonas(
     confianza_zonas = round(sum(scores) / len(scores), 4) if scores else 0.0
 
     documento = Documento(
-        nombre_archivo=archivo.filename,
+        nombre_archivo=nombre_original,
         tipo_archivo=extension,
         tamano_mb=tamano_mb,
         ruta_archivo=ruta_destino,
@@ -797,7 +844,7 @@ async def procesar_con_zonas(
 
     return {
         "plantilla": plantilla.nombre,
-        "archivo": archivo.filename,
+        "archivo": nombre_original,
         "doc_id": documento.id,
         "resultados": resultados,
     }
@@ -823,9 +870,11 @@ async def preview_zonas(
     if not plantilla.zonas:
         raise HTTPException(status_code=400, detail="La plantilla no tiene zonas definidas")
 
-    extension = os.path.splitext(archivo.filename)[1].lower()
+    nombre_original = _nombre_seguro(archivo.filename)
+    extension = os.path.splitext(nombre_original)[1].lower()
     if extension not in FORMATOS_SOPORTADOS:
         raise HTTPException(status_code=400, detail=f"Formato no soportado: {extension}")
+    _validar_contenido(archivo, extension)
 
     # Guardar en carpeta temporal con clave única
     temp_key = f"{uuid.uuid4().hex}{extension}"
@@ -841,15 +890,16 @@ async def preview_zonas(
             plantilla.img_ancho, plantilla.img_alto,
             idioma, pagina_pdf,
         )
-    except Exception as e:
+    except Exception:
+        app_log.exception("Error en OCR por zonas (preview) al procesar %s", ruta_tmp)
         if os.path.exists(ruta_tmp):
             os.remove(ruta_tmp)
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
 
     # Guardar en cache para la etapa de confirmación
     _preview_cache[temp_key] = {
         "ruta_tmp": ruta_tmp,
-        "archivo_nombre": archivo.filename,
+        "archivo_nombre": nombre_original,
         "idioma": idioma,
         "plantilla_id": plantilla_id,
         "plantilla_nombre": plantilla.nombre,
@@ -859,7 +909,7 @@ async def preview_zonas(
     return {
         "temp_key": temp_key,
         "plantilla_nombre": plantilla.nombre,
-        "archivo_nombre": archivo.filename,
+        "archivo_nombre": nombre_original,
         "resultados": resultados,
     }
 
@@ -905,7 +955,8 @@ async def confirmar_zona(
                 if isinstance(idx, int) and 0 <= idx < len(resultados):
                     resultados[idx]["texto_extraido"] = str(edit.get("texto_extraido", ""))
         except Exception:
-            pass  # Si falla el parseo se conservan los resultados originales
+            # Si falla el parseo se conservan los resultados originales
+            app_log.warning("resultados_editados inválido para %s; se conservan los originales", temp_key)
 
     texto_legible = "\n".join(
         f"{r['nombre_campo']}: {r['texto_extraido']}" for r in resultados
@@ -957,8 +1008,9 @@ def scan_dispositivos(request: Request, db: Session = Depends(get_db)):
         return listar_dispositivos()
     except ImportError:
         raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al listar escáneres: {str(e)}")
+    except Exception:
+        app_log.exception("Error al listar escáneres")
+        raise HTTPException(status_code=500, detail="No se pudo obtener la lista de escáneres.")
 
 
 @app.post("/scan/capturar")
@@ -978,8 +1030,9 @@ async def scan_capturar(
         return {"ok": True, "temp_key": nombre, "url_preview": f"/uploads/tmp/{nombre}"}
     except ImportError:
         raise HTTPException(status_code=503, detail="WIA no disponible en este sistema operativo")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al escanear: {str(e)}")
+    except Exception:
+        app_log.exception("Error al escanear con el dispositivo %s", device_id)
+        raise HTTPException(status_code=500, detail="No se pudo completar el escaneo.")
 
 
 @app.post("/scan/procesar")
@@ -998,8 +1051,9 @@ async def scan_procesar(
         raise HTTPException(status_code=404, detail="Archivo temporal no encontrado")
     try:
         texto, confianza = procesar_documento(ruta_tmp, idioma)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en OCR: {str(e)}")
+    except Exception:
+        app_log.exception("Error en OCR al procesar el escaneo %s", ruta_tmp)
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR.")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_final = f"{timestamp}_{temp_key}"
     ruta_final = os.path.join(UPLOAD_DIR, nombre_final)
@@ -1048,8 +1102,9 @@ async def scan_preview_zonas(
             plantilla.img_ancho, plantilla.img_alto,
             idioma, 0,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en OCR por zonas: {str(e)}")
+    except Exception:
+        app_log.exception("Error en OCR por zonas al procesar el escaneo %s", ruta_tmp)
+        raise HTTPException(status_code=500, detail="No se pudo procesar el documento con OCR por zonas.")
     _preview_cache[temp_key] = {
         "ruta_tmp": ruta_tmp,
         "archivo_nombre": temp_key,
@@ -1080,6 +1135,34 @@ def servir_subido(ruta: str, request: Request, db: Session = Depends(get_db)):
     if not os.path.isfile(destino):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(path=destino)
+
+
+# ── Documentación de la API, solo administradores (Mejora H-11) ──
+
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+def docs_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{app.title} - Documentación",
+        swagger_favicon_url="/static/favicon.ico",
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_admin(request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{app.title} - ReDoc",
+        redoc_favicon_url="/static/favicon.ico",
+    )
 
 
 # ── API general ───────────────────────────────────────────
