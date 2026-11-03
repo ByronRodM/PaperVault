@@ -46,7 +46,7 @@ cp .env.example .env
 DB_USER=papervault
 DB_PASSWORD=tu_contraseña_segura
 DB_NAME=papervault
-DATABASE_URL=postgresql+psycopg://papervault:tu_contraseña_segura@localhost:15432/papervault
+DATABASE_URL=postgresql+psycopg://papervault:tu_contraseña_segura@127.0.0.1:15432/papervault
 SESSION_SECRET=clave_aleatoria_de_al_menos_32_caracteres
 SESSION_HTTPS=0
 ```
