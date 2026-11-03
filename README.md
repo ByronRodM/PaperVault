@@ -89,6 +89,32 @@ Accede a [http://localhost:8000](http://localhost:8000).
 
 En el primer arranque se crea el usuario `admin` con una contraseña temporal que se muestra en la consola. Se pedirá cambiarla al ingresar.
 
+### 5. Respaldo y restauración
+
+`scripts/respaldo.ps1` (PowerShell 7.3 o superior) respalda la base de datos con `pg_dump` y la carpeta `uploads/` en un `.zip`, genera las huellas SHA-256 y elimina los respaldos con más de 30 días (`-DiasRetencion`). Con `-ProbarRestauracion` restaura la copia en una base temporal, compara los conteos de filas con el origen y la borra.
+
+```powershell
+pwsh -File scripts\respaldo.ps1 -Destino D:\Respaldos\PaperVault -ProbarRestauracion
+```
+
+Guarda los respaldos fuera del equipo del servidor (otro disco, NAS o almacenamiento externo); una copia en el mismo disco no protege contra una falla del disco ni contra ransomware.
+
+Para programarlo cada noche con el Programador de tareas de Windows:
+
+```powershell
+schtasks /Create /TN "PaperVault respaldo" /SC DAILY /ST 23:00 /TR "pwsh -NoProfile -File C:\ruta\a\PaperVault\scripts\respaldo.ps1 -Destino D:\Respaldos\PaperVault"
+```
+
+Para restaurar un respaldo (reemplaza los datos actuales):
+
+```powershell
+docker cp D:\Respaldos\PaperVault\papervault_AAAAMMDD_HHMMSS\papervault.dump papervault_db:/tmp/papervault.dump
+docker exec papervault_db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner /tmp/papervault.dump'
+Expand-Archive D:\Respaldos\PaperVault\papervault_AAAAMMDD_HHMMSS\uploads.zip -DestinationPath uploads -Force
+```
+
+Prueba la restauración periódicamente (al menos una vez al mes) con `-ProbarRestauracion`.
+
 > **Nota:** PaddleOCR descarga los modelos de red neuronal la primera vez que se utiliza el motor OCR. Esto puede tardar varios minutos dependiendo de la conexión. Los arranques posteriores son inmediatos.
 
 ## Estructura del proyecto
@@ -109,6 +135,8 @@ PaperVault/
 │   ├── referencias/         # Imágenes de referencia para plantillas OCR
 │   └── tmp/                 # Archivos temporales del flujo preview/confirmar
 ├── docs/                    # Documentación técnica y diagramas UML
+├── scripts/
+│   └── respaldo.ps1         # Respaldo de la base y de uploads/ con prueba de restauración
 ├── docker-compose.yml
 ├── .env.example
 └── requirements.txt

@@ -34,3 +34,6 @@ Desktop.ini
 
 # Registro de eventos de seguridad
 logs/
+
+# Respaldos locales (scripts/respaldo.ps1)
+respaldos/
