@@ -77,7 +77,8 @@ app.add_middleware(
     max_age=1800,
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Nota de auditoría (H-03): la carpeta uploads/ ya NO se publica como estática.
+# Sus archivos se entregan por la ruta autenticada /uploads/{ruta} (ver más abajo).
 templates = Jinja2Templates(directory="templates")
 
 
@@ -134,11 +135,35 @@ def get_user(request: Request) -> Optional[str]:
 def get_rol(request: Request) -> Optional[str]:
     return request.session.get("rol")
 
-def require_admin(request: Request):
-    if not get_user(request):
-        raise HTTPException(status_code=302, headers={"Location": "/login"})
-    if get_rol(request) != "admin":
+def usuario_valido(request: Request, db: Session) -> Optional[Usuario]:
+    """
+    Revalida la sesión contra la base de datos en cada petición (Mejora H-06):
+    el usuario debe existir y seguir activo. Si fue eliminado o desactivado, la
+    sesión se invalida de inmediato. El rol se toma de la base, no de la cookie.
+    """
+    nombre = get_user(request)
+    if not nombre:
+        return None
+    u = db.query(Usuario).filter(Usuario.nombre_usuario == nombre, Usuario.activo == True).first()
+    if not u:
+        request.session.clear()
+        return None
+    request.session["rol"] = u.rol
+    return u
+
+
+def require_sesion(request: Request, db: Session) -> Usuario:
+    u = usuario_valido(request, db)
+    if not u:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return u
+
+
+def require_admin(request: Request, db: Session) -> Usuario:
+    u = require_sesion(request, db)
+    if u.rol != "admin":
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador.")
+    return u
 
 
 @app.on_event("startup")
@@ -253,7 +278,7 @@ async def cambiar_password_post(
 
 @app.get("/api/usuarios")
 def listar_usuarios(request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     return [u.to_dict() for u in db.query(Usuario).order_by(Usuario.fecha_creacion).all()]
 
 
@@ -264,7 +289,7 @@ async def crear_usuario(
     rol: str = Form(default="usuario"),
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
     if db.query(Usuario).filter(Usuario.nombre_usuario == nombre_usuario).first():
         raise HTTPException(status_code=400, detail="El nombre de usuario ya existe.")
     if rol not in ("admin", "usuario"):
@@ -286,7 +311,7 @@ async def crear_usuario(
 
 @app.delete("/api/usuarios/{usuario_id}")
 def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -299,7 +324,7 @@ def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(ge
 
 @app.post("/api/usuarios/{usuario_id}/reset")
 def resetear_password(request: Request, usuario_id: int, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
@@ -464,7 +489,7 @@ def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(ge
 
 @app.delete("/eliminar/{doc_id}")
 def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
@@ -480,13 +505,15 @@ def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_
 # ── Plantillas OCR: CRUD ──────────────────────────────────
 
 @app.get("/api/plantillas")
-def listar_plantillas(db: Session = Depends(get_db)):
+def listar_plantillas(request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     plantillas = db.query(PlantillaOCR).order_by(PlantillaOCR.fecha_creacion.desc()).all()
     return [p.to_dict() for p in plantillas]
 
 
 @app.get("/api/plantillas/{plantilla_id}")
-def obtener_plantilla(plantilla_id: int, db: Session = Depends(get_db)):
+def obtener_plantilla(plantilla_id: int, request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -501,7 +528,7 @@ async def crear_plantilla(
     imagen_ref: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
 
     extension = os.path.splitext(imagen_ref.filename)[1].lower()
     if extension not in FORMATOS_IMAGEN:
@@ -535,7 +562,7 @@ async def crear_plantilla(
 
 @app.delete("/api/plantillas/{plantilla_id}")
 def eliminar_plantilla(plantilla_id: int, request: Request, db: Session = Depends(get_db)):
-    require_admin(request)
+    require_admin(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -557,7 +584,7 @@ def guardar_zonas(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    require_admin(request)
+    require_admin(request, db)
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
@@ -923,10 +950,27 @@ async def scan_preview_zonas(
     }
 
 
+# ── Entrega autenticada de archivos subidos (Mejora H-03) ──
+# Reemplaza el antiguo montaje estático de /uploads. Exige sesión y evita el
+# salto de directorio resolviendo la ruta dentro de UPLOAD_DIR.
+
+@app.get("/uploads/{ruta:path}")
+def servir_subido(ruta: str, request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
+    base = os.path.realpath(UPLOAD_DIR)
+    destino = os.path.realpath(os.path.join(UPLOAD_DIR, ruta))
+    if not destino.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    if not os.path.isfile(destino):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(path=destino)
+
+
 # ── API general ───────────────────────────────────────────
 
 @app.get("/api/documentos")
-def listar_documentos(busqueda: str = "", db: Session = Depends(get_db)):
+def listar_documentos(request: Request, busqueda: str = "", db: Session = Depends(get_db)):
+    require_sesion(request, db)
     query = db.query(Documento)
     if busqueda:
         query = query.filter(Documento.texto_extraido.contains(busqueda))
@@ -935,7 +979,8 @@ def listar_documentos(busqueda: str = "", db: Session = Depends(get_db)):
 
 
 @app.get("/api/estadisticas")
-def estadisticas(db: Session = Depends(get_db)):
+def estadisticas(request: Request, db: Session = Depends(get_db)):
+    require_sesion(request, db)
     total    = db.query(func.count(Documento.id)).scalar() or 0
     by_type  = db.query(Documento.tipo_archivo, func.count(Documento.id)).group_by(Documento.tipo_archivo).all()
     total_mb = db.query(func.sum(Documento.tamano_mb)).scalar() or 0.0
