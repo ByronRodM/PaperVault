@@ -338,8 +338,8 @@ def hacer_logout(request: Request):
 
 
 @app.get("/cambiar-password", response_class=HTMLResponse)
-def cambiar_password_get(request: Request):
-    if not get_user(request):
+def cambiar_password_get(request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse("cambiar_password.html", {"request": request, "error": None})
 
@@ -351,8 +351,8 @@ async def cambiar_password_post(
     password_confirmar: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = get_user(request)
-    if not user:
+    usuario = usuario_valido(request, db)
+    if not usuario:
         return RedirectResponse(url="/login", status_code=302)
     if password_nuevo != password_confirmar:
         return templates.TemplateResponse(
@@ -366,13 +366,10 @@ async def cambiar_password_post(
             {"request": request, "error": "La contraseña debe tener al menos 8 caracteres."},
             status_code=400,
         )
-    usuario = db.query(Usuario).filter(Usuario.nombre_usuario == user).first()
-    if not usuario:
-        return RedirectResponse(url="/login", status_code=302)
     usuario.password_hash = _hashear(password_nuevo)
     usuario.primer_login = False
     db.commit()
-    log_seguridad("password_cambiado", request, user)
+    log_seguridad("password_cambiado", request, usuario.nombre_usuario)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -444,11 +441,12 @@ def resetear_password(request: Request, usuario_id: int, db: Session = Depends(g
 
 @app.get("/", response_class=HTMLResponse)
 def pagina_principal(request: Request, db: Session = Depends(get_db)):
-    user = get_user(request)
-    if not user:
+    u = usuario_valido(request, db)
+    if not u:
         return RedirectResponse(url="/login", status_code=302)
+    user = u.nombre_usuario
 
-    documentos = db.query(Documento).order_by(Documento.fecha_carga.desc()).all()
+    documentos =db.query(Documento).order_by(Documento.fecha_carga.desc()).all()
     plantillas = db.query(PlantillaOCR).order_by(PlantillaOCR.fecha_creacion.desc()).all()
 
     total     = db.query(func.count(Documento.id)).scalar() or 0
@@ -486,7 +484,7 @@ async def subir_documento(
     idioma: str = Form(default="spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         return RedirectResponse(url="/login", status_code=302)
 
     extension = os.path.splitext(archivo.filename)[1].lower()
@@ -532,7 +530,7 @@ async def subir_documento(
 
 @app.get("/descargar/{doc_id}")
 def descargar_texto(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
@@ -550,7 +548,7 @@ def descargar_texto(doc_id: int, request: Request, db: Session = Depends(get_db)
 
 @app.get("/archivo/{doc_id}")
 def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
@@ -567,7 +565,7 @@ def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depe
 
 @app.get("/ver/{doc_id}")
 def ver_archivo_original(doc_id: int, request: Request, db: Session = Depends(get_db)):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     documento = db.query(Documento).filter(Documento.id == doc_id).first()
     if not documento:
@@ -728,7 +726,7 @@ async def procesar_con_zonas(
     pagina_pdf: int = Form(default=0),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
@@ -810,7 +808,7 @@ async def preview_zonas(
     pagina_pdf: int = Form(default=0),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     plantilla = db.query(PlantillaOCR).filter(PlantillaOCR.id == plantilla_id).first()
@@ -869,7 +867,7 @@ async def confirmar_zona(
     resultados_editados: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
 
     cache = _preview_cache.pop(temp_key, None)
@@ -931,8 +929,8 @@ async def confirmar_zona(
 # ── Plantillas OCR: cancelar preview ─────────────────────
 
 @app.delete("/api/plantillas/temp/{temp_key}")
-def cancelar_preview(temp_key: str, request: Request):
-    if not get_user(request):
+def cancelar_preview(temp_key: str, request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
@@ -945,8 +943,8 @@ def cancelar_preview(temp_key: str, request: Request):
 # ── Escáner WIA ──────────────────────────────────────────
 
 @app.get("/scan/dispositivos")
-def scan_dispositivos(request: Request):
-    if not get_user(request):
+def scan_dispositivos(request: Request, db: Session = Depends(get_db)):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     try:
         from core.scanner import listar_dispositivos
@@ -963,8 +961,9 @@ async def scan_capturar(
     device_id: str = Form(...),
     dpi: int = Form(300),
     modo: str = Form("color"),
+    db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     try:
         from core.scanner import escanear
@@ -984,7 +983,7 @@ async def scan_procesar(
     idioma: str = Form("spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
@@ -1024,7 +1023,7 @@ async def scan_preview_zonas(
     idioma: str = Form("spa"),
     db: Session = Depends(get_db),
 ):
-    if not get_user(request):
+    if not usuario_valido(request, db):
         raise HTTPException(status_code=401, detail="No autenticado")
     if any(c in temp_key for c in ("/", "\\", "..")):
         raise HTTPException(status_code=400, detail="temp_key inválido")
