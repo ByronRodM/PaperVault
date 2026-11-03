@@ -81,6 +81,36 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 templates = Jinja2Templates(directory="templates")
 
 
+# ── Cabeceras de seguridad (Mejora de auditoría H-08) ──────
+# La CSP solo admite, además del propio origen, los CDN que usan las plantillas:
+# Google Fonts (CSS y archivos de fuente) y jsDelivr (Chart.js y bootstrap-icons).
+# Se permite el enmarcado desde el mismo origen porque el visor muestra los PDF
+# en un <iframe> apuntando a /ver/{id}.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+    "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+    "img-src 'self' data:",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+])
+
+
+@app.middleware("http")
+async def cabeceras_seguridad(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    if SESSION_HTTPS:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
 # ── Pydantic models ───────────────────────────────────────
 
 class ZonaIn(BaseModel):
