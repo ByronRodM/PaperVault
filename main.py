@@ -1,9 +1,13 @@
 import hashlib
 import json
+import logging
 import os
+import re
 import secrets
 import shutil
+import time
 import uuid
+from collections import deque
 from datetime import datetime
 from typing import List, Optional
 
@@ -32,6 +36,83 @@ os.makedirs("static", exist_ok=True)
 _preview_cache: dict = {}
 
 
+# ── Registro de eventos de seguridad (Mejora H-14) ─────────
+# Registro persistente de eventos de seguridad (login, altas/bajas, cambios de
+# contraseña, descargas y borrados) en logs/seguridad.log.
+os.makedirs("logs", exist_ok=True)
+seguridad_log = logging.getLogger("papervault.seguridad")
+if not seguridad_log.handlers:
+    seguridad_log.setLevel(logging.INFO)
+    _fh = logging.FileHandler(os.path.join("logs", "seguridad.log"), encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    seguridad_log.addHandler(_fh)
+
+
+def _limpio(valor) -> str:
+    """Neutraliza caracteres de control para que un valor no pueda forjar líneas del log."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", str(valor))[:200]
+
+
+def log_seguridad(evento: str, request: Optional[Request] = None, usuario: Optional[str] = None, extra: str = ""):
+    ip = request.client.host if request is not None and request.client else "-"
+    seguridad_log.info(
+        "evento=%s usuario=%s ip=%s %s", evento, _limpio(usuario or "-"), ip, _limpio(extra)
+    )
+
+
+# ── Límite de intentos de inicio de sesión (Mejora H-05) ───
+# Ventana deslizante en memoria por (IP, usuario). Tras 5 fallos en 5 minutos
+# se bloquea temporalmente con respuesta 429.
+_INTENTOS: dict = {}
+_MAX_INTENTOS = 5
+_VENTANA_SEG = 300
+_MAX_CLAVES = 10_000  # por encima de esto se purgan las entradas vencidas
+
+
+def _clave_intentos(request: Request, username: str) -> tuple:
+    ip = request.client.host if request.client else "-"
+    return (ip, username.lower())
+
+
+def _vigentes(clave, ahora: float) -> Optional[deque]:
+    q = _INTENTOS.get(clave)
+    if q is None:
+        return None
+    while q and ahora - q[0] > _VENTANA_SEG:
+        q.popleft()
+    if not q:
+        del _INTENTOS[clave]
+        return None
+    return q
+
+
+def _esta_bloqueado(clave) -> bool:
+    q = _vigentes(clave, time.time())
+    return q is not None and len(q) >= _MAX_INTENTOS
+
+
+def _registrar_fallo(clave):
+    ahora = time.time()
+    if len(_INTENTOS) >= _MAX_CLAVES:
+        for k in list(_INTENTOS):
+            _vigentes(k, ahora)
+    _INTENTOS.setdefault(clave, deque()).append(ahora)
+
+
+def _limpiar_intentos(clave):
+    _INTENTOS.pop(clave, None)
+
+
+def _json_seguro(obj) -> str:
+    """
+    Serializa a JSON para incrustar dentro de <script> sin permitir ruptura de
+    contexto (Mejora H-04): se escapan < > & y separadores de línea Unicode.
+    """
+    s = json.dumps(obj, ensure_ascii=False)
+    return (s.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
 # ── Utilidades de contraseñas ──────────────────────────────
 
 def _hashear(password: str) -> str:
@@ -48,6 +129,10 @@ def _verificar(password: str, stored: str) -> bool:
         return secrets.compare_digest(nuevo, key)
     except Exception:
         return False
+
+
+# Hash con el mismo formato que _hashear, para igualar tiempos en logins de usuario inexistente (H-12)
+_HASH_FICTICIO = _hashear(secrets.token_urlsafe(16))
 
 app = FastAPI(
     title="PaperVault — Sistema de Gestión Documental",
@@ -213,16 +298,32 @@ async def hacer_login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    clave = _clave_intentos(request, username)
+    if _esta_bloqueado(clave):
+        log_seguridad("login_bloqueado", request, username)
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Demasiados intentos fallidos. Espere unos minutos e intente de nuevo."},
+            status_code=429,
+        )
     usuario = db.query(Usuario).filter(
         Usuario.nombre_usuario == username,
         Usuario.activo == True,
     ).first()
+    if usuario is None:
+        # Cálculo PBKDF2 ficticio para igualar el tiempo de respuesta y evitar
+        # la enumeración de usuarios por tiempo (Mejora H-12).
+        _verificar(password, _HASH_FICTICIO)
     if not usuario or not _verificar(password, usuario.password_hash):
+        _registrar_fallo(clave)
+        log_seguridad("login_fallido", request, username)
         return templates.TemplateResponse(
             "login.html",
             {"request": request, "error": "Usuario o contraseña incorrectos."},
             status_code=401,
         )
+    _limpiar_intentos(clave)
+    log_seguridad("login_ok", request, usuario.nombre_usuario)
     request.session["user"] = usuario.nombre_usuario
     request.session["rol"]  = usuario.rol
     if usuario.primer_login:
@@ -271,6 +372,7 @@ async def cambiar_password_post(
     usuario.password_hash = _hashear(password_nuevo)
     usuario.primer_login = False
     db.commit()
+    log_seguridad("password_cambiado", request, user)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -304,6 +406,7 @@ async def crear_usuario(
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
+    log_seguridad("usuario_creado", request, get_user(request), f"nuevo={nombre_usuario} rol={rol}")
     data = nuevo.to_dict()
     data["password_inicial"] = password_inicial   # solo se devuelve una vez
     return data
@@ -319,6 +422,7 @@ def eliminar_usuario(request: Request, usuario_id: int, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="No se puede eliminar al administrador principal.")
     db.delete(u)
     db.commit()
+    log_seguridad("usuario_eliminado", request, get_user(request), f"objetivo={u.nombre_usuario}")
     return {"ok": True}
 
 
@@ -332,6 +436,7 @@ def resetear_password(request: Request, usuario_id: int, db: Session = Depends(g
     u.password_hash = _hashear(nueva)
     u.primer_login = True
     db.commit()
+    log_seguridad("password_reseteado", request, get_user(request), f"objetivo={u.nombre_usuario}")
     return {"password_temporal": nueva}
 
 
@@ -350,8 +455,8 @@ def pagina_principal(request: Request, db: Session = Depends(get_db)):
     total_pdf = db.query(func.count(Documento.id)).filter(Documento.tipo_archivo == ".pdf").scalar() or 0
     total_mb  = db.query(func.sum(Documento.tamano_mb)).scalar() or 0.0
 
-    documentos_json  = json.dumps([d.to_dict() for d in documentos], ensure_ascii=False)
-    plantillas_json  = json.dumps([p.to_dict() for p in plantillas], ensure_ascii=False)
+    documentos_json  = _json_seguro([d.to_dict() for d in documentos])
+    plantillas_json  = _json_seguro([p.to_dict() for p in plantillas])
 
     return templates.TemplateResponse(
         "index.html",
@@ -434,6 +539,7 @@ def descargar_texto(doc_id: int, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Documento no encontrado")
 
     nombre_txt = os.path.splitext(documento.nombre_archivo)[0] + "_ocr.txt"
+    log_seguridad("descarga_texto", request, get_user(request), f"doc_id={doc_id}")
     return PlainTextResponse(
         content=documento.texto_extraido,
         headers={"Content-Disposition": f'attachment; filename="{nombre_txt}"'},
@@ -451,6 +557,7 @@ def descargar_archivo_original(doc_id: int, request: Request, db: Session = Depe
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     if not os.path.exists(documento.ruta_archivo):
         raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    log_seguridad("descarga_original", request, get_user(request), f"doc_id={doc_id}")
     return FileResponse(
         path=documento.ruta_archivo,
         filename=documento.nombre_archivo,
@@ -499,6 +606,8 @@ def eliminar_documento(doc_id: int, request: Request, db: Session = Depends(get_
 
     db.delete(documento)
     db.commit()
+    log_seguridad("documento_eliminado", request, get_user(request),
+                  f"doc_id={doc_id} nombre={documento.nombre_archivo}")
     return {"mensaje": f"Documento '{documento.nombre_archivo}' eliminado correctamente"}
 
 
@@ -572,6 +681,8 @@ def eliminar_plantilla(plantilla_id: int, request: Request, db: Session = Depend
 
     db.delete(plantilla)
     db.commit()
+    log_seguridad("plantilla_eliminada", request, get_user(request),
+                  f"plantilla_id={plantilla_id} nombre={plantilla.nombre}")
     return {"mensaje": f"Plantilla '{plantilla.nombre}' eliminada"}
 
 

@@ -31,3 +31,6 @@ env/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Registro de eventos de seguridad
+logs/
