@@ -55,7 +55,27 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(SessionMiddleware, secret_key="papervault-secret-key-dev-2024")
+# ── Clave de sesión (Mejora de auditoría H-01) ─────────────
+# La clave que firma las cookies de sesión DEBE provenir de una variable de
+# entorno/secreto; ya no está escrita en el código. Sin SESSION_SECRET la
+# aplicación no arranca, para evitar volver a una clave conocida por defecto.
+SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
+if len(SESSION_SECRET) < 32:
+    raise RuntimeError(
+        "SESSION_SECRET no definida o demasiado corta (mínimo 32 caracteres). "
+        "Genere una con: python -c \"import secrets; print(secrets.token_urlsafe(48))\" "
+        "y colóquela en el archivo .env antes de iniciar la aplicación."
+    )
+SESSION_HTTPS = os.getenv("SESSION_HTTPS", "0") == "1"
+# Cookie de sesión endurecida: HttpOnly (por defecto), SameSite=strict,
+# caducidad de 30 minutos y Secure cuando se sirva por HTTPS (SESSION_HTTPS=1).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="strict",
+    https_only=SESSION_HTTPS,
+    max_age=1800,
+)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 templates = Jinja2Templates(directory="templates")

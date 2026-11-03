@@ -47,7 +47,17 @@ DB_USER=papervault
 DB_PASSWORD=tu_contraseña_segura
 DB_NAME=papervault
 DATABASE_URL=postgresql+psycopg://papervault:tu_contraseña_segura@localhost:15432/papervault
+SESSION_SECRET=clave_aleatoria_de_al_menos_32_caracteres
+SESSION_HTTPS=0
 ```
+
+`SESSION_SECRET` firma las cookies de sesión y es obligatoria: la aplicación no arranca sin ella. Genérala con:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Pon `SESSION_HTTPS=1` solo si la aplicación se sirve por HTTPS (activa la cookie `Secure` y HSTS).
 
 ### 2. Base de datos
 
