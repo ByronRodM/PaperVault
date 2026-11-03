@@ -234,6 +234,12 @@ def usuario_valido(request: Request, db: Session) -> Optional[Usuario]:
         request.session.clear()
         return None
     request.session["rol"] = u.rol
+    # Contraseña temporal pendiente (Mejora H-07): mientras primer_login sea
+    # verdadero solo se permite cambiarla; el panel redirige y el resto responde 403.
+    if u.primer_login and request.url.path != "/cambiar-password":
+        if request.method == "GET" and request.url.path == "/":
+            raise HTTPException(status_code=303, headers={"Location": "/cambiar-password"})
+        raise HTTPException(status_code=403, detail="Debe cambiar la contraseña temporal antes de continuar.")
     return u
 
 
