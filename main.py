@@ -208,17 +208,29 @@ templates = Jinja2Templates(directory="templates")
 
 
 # ── Cabeceras de seguridad (Mejora de auditoría H-08) ──────
-# La CSP solo admite, además del propio origen, los CDN que usan las plantillas:
-# Google Fonts (CSS y archivos de fuente) y jsDelivr (Chart.js y bootstrap-icons).
-# Se permite el enmarcado desde el mismo origen porque el visor muestra los PDF
-# en un <iframe> apuntando a /ver/{id}.
+# Chart.js, bootstrap-icons e Inter se sirven desde /static/vendor, así que la CSP
+# solo admite el propio origen. Se permite el enmarcado desde el mismo origen
+# porque el visor muestra los PDF en un <iframe> apuntando a /ver/{id}.
 CSP = "; ".join([
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-    "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+])
+
+# Swagger UI y ReDoc (solo admin) cargan sus recursos desde jsDelivr; ReDoc además
+# usa Google Fonts y un worker blob:. Esta CSP se aplica únicamente a /docs y /redoc.
+CSP_DOCS = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https://cdn.redoc.ly",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
 ])
@@ -1148,7 +1160,7 @@ def openapi_admin(request: Request, db: Session = Depends(get_db)):
 @app.get("/docs", include_in_schema=False)
 def docs_admin(request: Request, db: Session = Depends(get_db)):
     require_admin(request, db)
-    return get_swagger_ui_html(
+    response = get_swagger_ui_html(
         openapi_url="/openapi.json",
         title=f"{app.title} - Documentación",
         swagger_favicon_url="/static/favicon.ico",
@@ -1157,8 +1169,10 @@ def docs_admin(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/redoc", include_in_schema=False)
 def redoc_admin(request: Request, db: Session = Depends(get_db)):
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
     require_admin(request, db)
-    return get_redoc_html(
+    response = get_redoc_html(
         openapi_url="/openapi.json",
         title=f"{app.title} - ReDoc",
         redoc_favicon_url="/static/favicon.ico",
@@ -1167,6 +1181,8 @@ def redoc_admin(request: Request, db: Session = Depends(get_db)):
 
 # ── API general ───────────────────────────────────────────
 
+    response.headers["Content-Security-Policy"] = CSP_DOCS
+    return response
 @app.get("/api/documentos")
 def listar_documentos(request: Request, busqueda: str = "", db: Session = Depends(get_db)):
     require_sesion(request, db)
